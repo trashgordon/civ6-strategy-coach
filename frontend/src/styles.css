@@ -1,0 +1,65 @@
+:root {
+  --bg: #101a28;
+  --bg-hero: #0b141f;
+  --panel: #152233;
+  --panel-alt: #1b2c40;
+  --border: #2a3e54;
+  --brass: #c7a542;
+  --brass-dim: #8b7a48;
+  --parchment: #ece4ce;
+  --parchment-dim: #a9a08a;
+  --rust: #a6522e;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--parchment);
+  font-family: "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+select, input, textarea, button { font: inherit; }
+
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* The pulsing ellipsis under "the coach is studying the board". */
+@keyframes pulse-dot {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+.dot { display: inline-block; animation: pulse-dot 1.4s infinite; }
+.dot:nth-of-type(2) { animation-delay: 0.2s; }
+.dot:nth-of-type(3) { animation-delay: 0.4s; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg-hero); }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--brass-dim); }
+
+/* Two-column briefing layout collapses on narrow screens. */
+.briefing-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 62rem) {
+  .briefing-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.compare-scroll { overflow-x: auto; }
