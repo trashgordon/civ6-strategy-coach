@@ -24,6 +24,20 @@ def db_path() -> Path:
     return path
 
 
+def facts_path() -> Path:
+    """Where extracted game data lives.
+
+    Deliberately not derived from DB_PATH: this is a cache built from the player's game
+    install, not their data, and it must sit under the gitignored `data/` directory so
+    Firaxis's content is never committed. FACTS_PATH overrides it.
+    """
+    raw = os.getenv("FACTS_PATH", "").strip()
+    if raw:
+        path = Path(raw).expanduser()
+        return path if path.is_absolute() else REPO_ROOT / path
+    return REPO_ROOT / "data" / "facts"
+
+
 def app_password() -> str | None:
     """The password gate only exists if this is set to something non-empty."""
     value = os.getenv("APP_PASSWORD", "").strip()

@@ -10,7 +10,7 @@ import { Markdown } from "../markdown";
 import { SERIF, T } from "../theme";
 import {
   Button, Empty, ErrorNote, FieldRow, NumberInput, Panel, Select, Thinking,
-  UsageNote,
+  UnverifiedNames, UsageNote,
 } from "../components/ui";
 
 export default function NewBriefing({ onSaved, onOpenArchive }) {
@@ -251,6 +251,7 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
                 </div>
               </header>
               <div style={{ maxWidth: "44rem" }}>
+                <UnverifiedNames names={build.unverified_names} />
                 <Markdown text={build.generated_plan} />
               </div>
             </article>

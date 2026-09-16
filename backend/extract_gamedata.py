@@ -1,0 +1,242 @@
+"""Extract canonical Civ VI names from your own game install.
+
+    python -m backend.extract_gamedata
+
+Writes JSON to `data/facts/`, which is gitignored — and must stay that way. The names
+and descriptions are Firaxis/2K's copyrighted content, so this repo ships the extractor,
+never the extracted data. Everyone runs it against the copy of the game they own, which
+also means the output matches whichever DLC and patch they actually have.
+
+Nothing here is required: with no facts on disk the app behaves exactly as before.
+"""
+
+import json
+import os
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+from . import config
+
+# Where the game usually lives, per platform. CIV6_PATH overrides all of it.
+_CANDIDATE_ROOTS = [
+    # macOS (Steam)
+    "~/Library/Application Support/Steam/steamapps/common/Sid Meier's Civilization VI",
+    # Windows (Steam / Epic)
+    "C:/Program Files (x86)/Steam/steamapps/common/Sid Meier's Civilization VI",
+    "C:/Program Files/Epic Games/SidMeiersCivilizationVI",
+    # Linux (Steam / Proton)
+    "~/.steam/steam/steamapps/common/Sid Meier's Civilization VI",
+    "~/.local/share/Steam/steamapps/common/Sid Meier's Civilization VI",
+]
+
+# <Row Tag="LOC_TECH_POTTERY_NAME"><Text>Pottery</Text></Row>
+_LOC_ROW = re.compile(
+    r'<Row\s+Tag="(LOC_[A-Z0-9_]+)"[^>]*>\s*<Text>(.*?)</Text>', re.DOTALL
+)
+_XML_ROW = re.compile(r"<Row\s+([^>]*?)/?>", re.DOTALL)
+_ATTR = re.compile(r'(\w+)="([^"]*)"')
+
+# Table -> (the attribute holding the display-name key, output filename, label).
+# Wonders are split out of Buildings by the IsWonder flag.
+_TABLES = [
+    ("Technologies", "Name", "technologies", "Technologies"),
+    ("Civics", "Name", "civics", "Civics"),
+    ("Buildings", "Name", "buildings", "Buildings"),
+    ("Districts", "Name", "districts", "Districts"),
+    ("Policies", "Name", "policy_cards", "Policy cards"),
+    ("Beliefs", "Name", "beliefs", "Religious beliefs"),
+    ("Governments", "Name", "governments", "Governments"),
+    ("Governors", "Name", "governors", "Governors"),
+    ("GovernorPromotions", "Name", "governor_promotions", "Governor promotions"),
+    ("Units", "Name", "units", "Units"),
+    ("Improvements", "Name", "improvements", "Improvements"),
+    ("Resources", "Name", "resources", "Resources"),
+    ("Civilizations", "Name", "civilizations", "Civilizations"),
+    ("Leaders", "Name", "leaders", "Leaders"),
+    # Not for the prompt — these exist so validation doesn't flag an era, a yield or a
+    # Great Person the coach legitimately named.
+    ("Eras", "Name", "eras", "Eras"),
+    ("Yields", "Name", "yields", "Yields"),
+    ("Religions", "Name", "religions", "Religions"),
+    ("GreatPersonIndividuals", "Name", "great_people", "Great People"),
+    ("Projects", "Name", "projects", "Projects"),
+    ("Features", "Name", "features", "Map features"),
+    ("Terrains", "Name", "terrains", "Terrains"),
+    ("BeliefClasses", "Name", "belief_classes", "Belief classes"),
+]
+
+# Some names only exist in the localization files, with no gameplay table carrying a
+# Name attribute — civ and leader abilities ("Enuma Anu Enlil") are the big one.
+_LOC_PREFIX_GROUPS = [
+    ("LOC_TRAIT_", "_NAME", "abilities", "Civ & leader abilities"),
+]
+
+
+def find_install() -> Path | None:
+    override = os.getenv("CIV6_PATH", "").strip()
+    if override:
+        path = Path(override).expanduser()
+        return path if path.is_dir() else None
+    for candidate in _CANDIDATE_ROOTS:
+        path = Path(candidate).expanduser()
+        if path.is_dir():
+            return path
+    return None
+
+
+def _assets_dir(install: Path) -> Path | None:
+    """The Assets tree, which sits inside the .app bundle on macOS."""
+    for candidate in (
+        install / "Civ6.app" / "Contents" / "Assets",
+        install / "Sid Meier's Civilization VI.app" / "Contents" / "Assets",
+        install / "Assets",
+    ):
+        if candidate.is_dir():
+            return candidate
+    # Fall back to hunting for it.
+    for base in install.rglob("Assets"):
+        if (base / "Base").is_dir():
+            return base
+    return None
+
+
+def _load_localization(assets: Path) -> dict[str, set[str]]:
+    """LOC_* key -> every English display text defined for it.
+
+    Scenario DLC reuses base-game keys for different things: the Black Death scenario
+    redefines LOC_GOVERNMENT_MONARCHY_NAME as "Catholic Monarchy". Resolving a key to one
+    winner would silently drop "Monarchy" from the whitelist, so keep every variant —
+    for "is this a real name?" the union is exactly what we want.
+    """
+    strings: dict[str, set[str]] = defaultdict(set)
+    for path in assets.rglob("Text/en_US/*.xml"):
+        try:
+            content = path.read_text(errors="ignore")
+        except OSError:
+            continue
+        for tag, value in _LOC_ROW.findall(content):
+            value = value.strip()
+            if value:
+                strings[tag].add(value)
+    return strings
+
+
+def _collect_rows(assets: Path) -> dict[str, list[dict[str, str]]]:
+    """{table name: [row attribute dicts]} across every gameplay XML file."""
+    tables: dict[str, list[dict[str, str]]] = defaultdict(list)
+    wanted = {name for name, *_ in _TABLES}
+    for path in assets.rglob("*.xml"):
+        if "Text" in path.parts:
+            continue
+        try:
+            content = path.read_text(errors="ignore")
+        except OSError:
+            continue
+        for table in wanted:
+            # Only scan the slice of the file inside <Table>...</Table>.
+            for block in re.findall(
+                rf"<{table}>(.*?)</{table}>", content, flags=re.DOTALL
+            ):
+                for raw in _XML_ROW.findall(block):
+                    tables[table].append(dict(_ATTR.findall(raw)))
+    return tables
+
+
+def _clean(name: str) -> str | None:
+    """Drop unresolved keys, icon markup, and anything that isn't a plain name."""
+    if not name:
+        return None
+    name = name.strip()
+    if not name or name.startswith("LOC_"):
+        return None
+    if "[" in name or "{" in name or len(name) > 60:
+        return None
+    return name
+
+
+def extract() -> dict[str, list[str]]:
+    install = find_install()
+    if install is None:
+        raise FileNotFoundError(
+            "Couldn't find a Civilization VI install. Set CIV6_PATH to the game folder."
+        )
+    assets = _assets_dir(install)
+    if assets is None:
+        raise FileNotFoundError(f"Found {install} but no Assets directory inside it.")
+
+    strings = _load_localization(assets)
+    rows = _collect_rows(assets)
+
+    facts: dict[str, list[str]] = {}
+    for table, name_attr, out_name, _label in _TABLES:
+        names: set[str] = set()
+        wonders: set[str] = set()
+        for row in rows.get(table, []):
+            key = row.get(name_attr)
+            if not key:
+                continue
+            for raw in strings.get(key, ()):
+                value = _clean(raw)
+                if value is None:
+                    continue
+                if table == "Buildings" and row.get("IsWonder") == "true":
+                    wonders.add(value)
+                else:
+                    names.add(value)
+        facts[out_name] = sorted(names)
+        if table == "Buildings":
+            facts["wonders"] = sorted(wonders)
+
+    for prefix, suffix, out_name, _label in _LOC_PREFIX_GROUPS:
+        harvested = {
+            _clean(value)
+            for tag, values in strings.items()
+            if tag.startswith(prefix) and tag.endswith(suffix)
+            for value in values
+        }
+        facts[out_name] = sorted(v for v in harvested if v)
+
+    # Golden Age dedications are the commemoration categories, named via LOC_MOMENT_*.
+    dedications = {
+        _clean(value)
+        for tag, values in strings.items()
+        if tag.startswith("LOC_MOMENT_CATEGORY_")
+        and not tag.endswith(("_GOLDEN_AGE", "_NORMAL_AGE", "_DARK_AGE"))
+        for value in values
+    }
+    facts["dedications"] = sorted(d for d in dedications if d)
+
+    return facts
+
+
+def facts_dir() -> Path:
+    return config.facts_path()
+
+
+def main() -> int:
+    try:
+        facts = extract()
+    except FileNotFoundError as exc:
+        print(exc, file=sys.stderr)
+        print(
+            "\nThe app works without this — it just won't be able to check the coach's\n"
+            "names against the real game data.",
+            file=sys.stderr,
+        )
+        return 1
+
+    out = facts_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    total = 0
+    for name, values in sorted(facts.items()):
+        (out / f"{name}.json").write_text(json.dumps(values, indent=1, ensure_ascii=False))
+        total += len(values)
+        print(f"  {name:22} {len(values):>5}")
+    print(f"\n  {'TOTAL':22} {total:>5} names -> {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

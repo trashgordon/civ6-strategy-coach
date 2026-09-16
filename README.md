@@ -90,10 +90,45 @@ All of it optional except the model and its key.
 | `MODEL` | `anthropic/claude-sonnet-5` | LiteLLM model string |
 | *provider key* | — | e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` |
 | `REASONING_EFFORT` | `low` | Reasoning depth on models that reason (see below) |
+| `CIV6_PATH` | auto-detected | Your Civ VI install, for game-data grounding |
+| `FACTS_PATH` | `./data/facts` | Where extracted game names are cached |
 | `DB_PATH` | `./data/strategies.db` | Where your saved builds live |
 | `APP_PASSWORD` | unset | Set it to turn on a password gate (see below) |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8000` | Port |
+
+### Grounding in your own game install (optional)
+
+The coach recalls Civ VI from the model's training data, which means it can invent a
+confident, plausible, non-existent name — a real plan here recommended the Golden Age
+dedication "Exodus of the Evenkind", which isn't a thing.
+
+If you own the game, you can ground it in the real thing:
+
+```bash
+python -m backend.extract_gamedata
+```
+
+That reads Firaxis's own gameplay XML and localization out of your install and caches
+~2,200 canonical names (techs, civics, wonders, districts, policy cards, beliefs,
+governors, governments, dedications and more) into `data/facts/`. It's auto-detected on
+macOS, Windows and Linux Steam installs; set `CIV6_PATH` if not found.
+
+Two things then happen:
+
+- **Prevention** — the real name lists go into the prompt, so the coach picks from a
+  closed set rather than recalling. Costs roughly 4,900 extra input tokens per plan
+  (about +$0.012 on Claude Sonnet 5).
+- **Detection** — every name the coach puts in bold is checked against the data
+  afterwards, and anything unrecognised is flagged above the plan with a ⚠ marker. Free.
+
+**The extracted data is never committed.** Those names are Firaxis/2K's copyrighted
+content, so this repo ships the extractor, not the output — `data/` is gitignored, and
+everyone runs it against the copy of the game they own. That also means the names match
+whichever DLC and patch *you* have.
+
+Skip all of this and the app works exactly as before: no grounding, no flags, no extra
+tokens. Nothing here is required.
 
 ### Reasoning models
 

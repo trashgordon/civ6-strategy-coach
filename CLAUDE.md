@@ -18,5 +18,12 @@ A local-first, open-source web app: a Civilization VI build coach. Configure a g
 - Schema changes: bump `PRAGMA user_version` and run the needed `ALTER TABLE` at startup — no migration framework
 - Build the MVP first (see the brief's feature backlog) before touching anything in the backlog list
 
+## Game-data grounding
+`backend/extract_gamedata.py` pulls canonical names from the user's own Civ VI install
+into `data/facts/` (gitignored — it's Firaxis's copyrighted content, so the repo ships
+the extractor, never the data). `backend/facts.py` feeds those names into the prompt and
+checks generated plans against them. Every part of this must degrade to a silent no-op
+when `data/facts/` is absent.
+
 ## Voice
 Both system prompts (build generation and compare/contrast) live verbatim in the brief — reuse them as-is rather than rewriting the coach's voice from scratch.

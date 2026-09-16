@@ -55,6 +55,17 @@ MODE_LABELS = {
 NO_PREFERENCE = "No preference"
 
 
+def build_system_prompt(facts_block: str = "") -> str:
+    """The build prompt, optionally grounded in names from the player's own install.
+
+    Without a facts block this is the prompt verbatim from the brief. With one, the
+    closed sets are appended — the brief's wording is never edited, only extended.
+    """
+    if not facts_block:
+        return BUILD_SYSTEM_PROMPT
+    return f"{BUILD_SYSTEM_PROMPT}\n\n---\n\n{facts_block}"
+
+
 def _style_line(label: str, value: str, fallback: str) -> str:
     value = (value or "").strip()
     if not value or value == NO_PREFERENCE:

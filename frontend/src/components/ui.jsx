@@ -298,3 +298,37 @@ export function UsageNote({ usage, style }) {
     </span>
   );
 }
+
+// Names the coach asserted that aren't in the player's installed game data. Only ever
+// shown when facts are installed — see backend/facts.py.
+export function UnverifiedNames({ names }) {
+  if (!names || !names.length) return null;
+  return (
+    <div
+      role="note"
+      style={{
+        border: `1px solid ${T.brassDim}`,
+        background: "rgba(199, 165, 66, 0.08)",
+        borderRadius: "3px",
+        padding: "0.6rem 0.8rem",
+        margin: "0 0 1rem",
+        fontSize: "0.8rem",
+        lineHeight: 1.6,
+        color: T.parchmentDim,
+      }}
+    >
+      <strong style={{ color: T.brass, fontWeight: 600 }}>
+        ⚠ Not found in your game data:
+      </strong>{" "}
+      {names.map((name, i) => (
+        <span key={name}>
+          <span style={{ color: T.parchment }}>{name}</span>
+          {i < names.length - 1 ? ", " : ""}
+        </span>
+      ))}
+      <div style={{ marginTop: "0.35rem" }}>
+        The coach may have misremembered the name. Check before hunting for it in-game.
+      </div>
+    </div>
+  );
+}

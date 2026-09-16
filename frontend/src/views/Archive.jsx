@@ -5,7 +5,8 @@ import { api } from "../api";
 import { Markdown } from "../markdown";
 import { SERIF, T } from "../theme";
 import {
-  Button, Empty, ErrorNote, Panel, Select, Tag, TextInput, UsageNote, formatDate,
+  Button, Empty, ErrorNote, Panel, Select, Tag, TextInput, UnverifiedNames,
+  UsageNote, formatDate,
 } from "../components/ui";
 
 function BuildRow({ build, active, onSelect }) {
@@ -335,6 +336,7 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey }) {
             </header>
 
             <div style={{ maxWidth: "44rem" }}>
+              <UnverifiedNames names={selected.unverified_names} />
               <Markdown text={selected.generated_plan} />
             </div>
           </article>

@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, config, db, llm, prompts, summarize, titles
+from . import auth, config, db, facts, llm, prompts, summarize, titles
 
 log = logging.getLogger("civ6")
 
@@ -101,6 +101,8 @@ def meta(request: Request) -> dict[str, Any]:
         "authenticated": auth.is_authenticated(request),
         "model": config.model(),
         "missing_key": llm.missing_key_hint(),
+        "facts_available": facts.available(),
+        "facts_counts": facts.summary(),
     }
 
 
@@ -143,7 +145,9 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
 
     try:
         result = await llm.complete(
-            prompts.BUILD_SYSTEM_PROMPT, user_prompt, max_tokens=MAX_PLAN_TOKENS
+            prompts.build_system_prompt(facts.prompt_block()),
+            user_prompt,
+            max_tokens=MAX_PLAN_TOKENS,
         )
     except llm.LLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -176,6 +180,9 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
         cost_usd=result.cost_usd,
     )
     build["usage"] = db.usage_for_build(build["id"])
+    # Names the coach asserted that aren't in the installed game data. Empty when no
+    # facts are installed — we don't flag what we can't check.
+    build["unverified_names"] = facts.unverified_names(result.text)
     return build
 
 
@@ -199,6 +206,7 @@ def get_build(build_id: int) -> dict[str, Any]:
     if build is None:
         raise HTTPException(status_code=404, detail="No build with that id")
     build["usage"] = db.usage_for_build(build_id)
+    build["unverified_names"] = facts.unverified_names(build["generated_plan"])
     return build
 
 
