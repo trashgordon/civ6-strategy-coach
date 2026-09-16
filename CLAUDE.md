@@ -7,7 +7,9 @@ A local-first, open-source web app: a Civilization VI build coach. Configure a g
 ## Stack
 - Backend: FastAPI (Python), serving both the API and the built frontend as static files
 - LLM calls: LiteLLM, not a provider-specific client — see "LLM: provider-agnostic" in the brief
-- Database: SQLite, one file, one table (`saved_builds`), path from `DB_PATH` env var
+- Database: SQLite, one file, path from `DB_PATH` env var. Two tables: `saved_builds`
+  (the archive) and `api_calls` (token counts and dollar cost per model call, including
+  compare calls, which aren't tied to a saved build)
 - Frontend: React, built to static files FastAPI serves — reference `civ6-strategy-coach.jsx` for the original field lists and prompt-construction logic, but that file calls the Anthropic API directly from the client; port that logic to call our own backend endpoint instead
 
 ## Conventions

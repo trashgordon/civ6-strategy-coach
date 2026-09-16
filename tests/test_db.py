@@ -71,3 +71,52 @@ def test_distinct_values_rejects_an_arbitrary_column():
         assert "filterable" in str(exc)
     else:
         raise AssertionError("expected a ValueError")
+
+
+def test_a_v1_database_upgrades_to_v2_without_losing_builds():
+    """The `git pull` case: someone's existing archive meets the new api_calls table."""
+    conn = db.connect()
+
+    # Stand up a database at v1 exactly as the previous release left it.
+    with conn:
+        conn.executescript(db.SCHEMA_V1)
+        conn.execute("PRAGMA user_version = 1")
+    saved = db.insert_build(
+        title="Korea — Science", config_dict={"ruleset": "Gathering Storm"},
+        civ="Korea", city_philosophy="Tall", primary_focus="Science",
+        posture="", playstyle_text="tech and turtle", generated_plan="## Plan\n**Korea**",
+    )
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    tables_before = {
+        r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert "api_calls" not in tables_before
+
+    # Now upgrade, the way startup does.
+    assert db.migrate() == 2
+
+    # The pre-existing build is untouched...
+    still_there = db.get_build(saved["id"])
+    assert still_there["title"] == "Korea — Science"
+    assert still_there["playstyle_text"] == "tech and turtle"
+    # ...the new table exists...
+    assert "api_calls" in {
+        r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    # ...and a build that predates tracking simply reports no usage.
+    assert db.usage_for_build(saved["id"]) is None
+    assert db.usage_totals()["calls"] == 0
+
+
+def test_usage_totals_ignore_nulls_but_flag_them():
+    db.migrate()
+    db.insert_api_call(kind=db.GENERATE, model="m", prompt_tokens=100,
+                       completion_tokens=50, cost_usd=0.01)
+    db.insert_api_call(kind=db.GENERATE, model="local", prompt_tokens=None,
+                       completion_tokens=None, cost_usd=None)
+
+    totals = db.usage_totals()
+    assert totals["calls"] == 2
+    assert totals["prompt_tokens"] == 100          # the NULL doesn't poison the sum
+    assert totals["cost_usd"] == 0.01
+    assert totals["has_unpriced_calls"] is True

@@ -36,9 +36,26 @@ CREATE TABLE IF NOT EXISTS saved_builds (
 CREATE INDEX IF NOT EXISTS idx_saved_builds_created_at ON saved_builds (created_at DESC);
 """
 
+SCHEMA_V2 = """
+CREATE TABLE IF NOT EXISTS api_calls (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at        TEXT    NOT NULL,
+    kind              TEXT    NOT NULL,          -- 'generate' | 'compare'
+    build_id          INTEGER,                   -- set for 'generate', NULL for 'compare'
+    model             TEXT    NOT NULL DEFAULT '',
+    prompt_tokens     INTEGER,                   -- NULL when the provider didn't report
+    completion_tokens INTEGER,
+    cost_usd          REAL,                      -- NULL when the model isn't priced
+    FOREIGN KEY (build_id) REFERENCES saved_builds (id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_api_calls_created_at ON api_calls (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_api_calls_build_id ON api_calls (build_id);
+"""
+
 # version -> SQL to reach that version. Append only.
 MIGRATIONS: list[tuple[int, str]] = [
     (1, SCHEMA_V1),
+    (2, SCHEMA_V2),
 ]
 
 CURRENT_VERSION = MIGRATIONS[-1][0]
@@ -223,3 +240,108 @@ def distinct_values(column: str) -> list[str]:
 
 def db_file() -> Path:
     return config.db_path()
+
+
+# --------------------------------------------------------------------- api usage
+
+GENERATE = "generate"
+COMPARE = "compare"
+
+
+def insert_api_call(
+    *,
+    kind: str,
+    model: str,
+    build_id: int | None = None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    cost_usd: float | None = None,
+) -> int:
+    """Record one model call. Never raises on a cost we couldn't determine — the
+    columns are nullable precisely so an unpriced model still gets logged."""
+    conn = connect()
+    created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO api_calls (
+                created_at, kind, build_id, model,
+                prompt_tokens, completion_tokens, cost_usd
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (created_at, kind, build_id, model or "",
+             prompt_tokens, completion_tokens, cost_usd),
+        )
+    return cursor.lastrowid  # type: ignore[return-value]
+
+
+def _usage_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "calls": row["calls"] or 0,
+        "prompt_tokens": row["prompt_tokens"] or 0,
+        "completion_tokens": row["completion_tokens"] or 0,
+        "cost_usd": row["cost_usd"] or 0.0,
+        # True when at least one call had no price, so a total can be shown as "at least".
+        "has_unpriced_calls": bool(row["unpriced"]),
+    }
+
+
+_USAGE_SELECT = """
+SELECT COUNT(*)                                   AS calls,
+       COALESCE(SUM(prompt_tokens), 0)            AS prompt_tokens,
+       COALESCE(SUM(completion_tokens), 0)        AS completion_tokens,
+       COALESCE(SUM(cost_usd), 0.0)               AS cost_usd,
+       SUM(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) AS unpriced
+FROM api_calls
+"""
+
+
+def usage_totals() -> dict[str, Any]:
+    """Lifetime spend, plus a breakdown by call kind."""
+    conn = connect()
+    overall = _usage_row(conn.execute(_USAGE_SELECT).fetchone())
+
+    grouped = _USAGE_SELECT.replace("SELECT COUNT(*)", "SELECT kind, COUNT(*)", 1)
+    by_kind = {
+        row["kind"]: _usage_row(row)
+        for row in conn.execute(f"{grouped} GROUP BY kind").fetchall()
+    }
+
+    overall["by_kind"] = by_kind
+    return overall
+
+
+def usage_for_build(build_id: int) -> dict[str, Any] | None:
+    """What the call that produced this build cost. None if it predates tracking."""
+    row = connect().execute(
+        """
+        SELECT model, prompt_tokens, completion_tokens, cost_usd, created_at
+        FROM api_calls
+        WHERE build_id = ? AND kind = ?
+        ORDER BY id DESC LIMIT 1
+        """,
+        (build_id, GENERATE),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "model": row["model"],
+        "prompt_tokens": row["prompt_tokens"],
+        "completion_tokens": row["completion_tokens"],
+        "cost_usd": row["cost_usd"],
+    }
+
+
+def recent_api_calls(limit: int = 50) -> list[dict[str, Any]]:
+    rows = connect().execute(
+        """
+        SELECT a.id, a.created_at, a.kind, a.build_id, a.model,
+               a.prompt_tokens, a.completion_tokens, a.cost_usd,
+               b.title AS build_title
+        FROM api_calls a
+        LEFT JOIN saved_builds b ON b.id = a.build_id
+        ORDER BY a.id DESC LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(row) for row in rows]

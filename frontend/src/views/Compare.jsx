@@ -5,7 +5,7 @@ import { api } from "../api";
 import { Markdown } from "../markdown";
 import { SERIF, T } from "../theme";
 import {
-  Button, Empty, ErrorNote, Panel, Thinking, formatDate,
+  Button, Empty, ErrorNote, Panel, Thinking, UsageNote, formatDate,
 } from "../components/ui";
 
 const ROWS = [
@@ -108,7 +108,7 @@ function CompareTable({ rows }) {
   );
 }
 
-export default function Compare({ refreshKey }) {
+export default function Compare({ refreshKey, onCompared }) {
   const [builds, setBuilds] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [listError, setListError] = useState(null);
@@ -142,6 +142,7 @@ export default function Compare({ refreshKey }) {
     setResult(null);
     try {
       setResult(await api.compare(selectedIds));
+      onCompared?.();
     } catch (e) {
       setError(e.message || "Couldn't build that comparison.");
     } finally {
@@ -249,14 +250,23 @@ export default function Compare({ refreshKey }) {
           <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
             <CompareTable rows={result.rows} />
             <div style={{ maxWidth: "44rem" }}>
-              <h3
+              <div
                 style={{
-                  fontFamily: SERIF, color: T.parchment, fontSize: "1.3rem",
-                  margin: "0 0 0.25rem", fontWeight: 400,
+                  display: "flex", justifyContent: "space-between",
+                  alignItems: "baseline", gap: "1rem", flexWrap: "wrap",
+                  margin: "0 0 0.25rem",
                 }}
               >
-                The coach's read
-              </h3>
+                <h3
+                  style={{
+                    fontFamily: SERIF, color: T.parchment, fontSize: "1.3rem",
+                    margin: 0, fontWeight: 400,
+                  }}
+                >
+                  The coach's read
+                </h3>
+                <UsageNote usage={result.usage} />
+              </div>
               <Markdown text={result.writeup} />
             </div>
           </div>

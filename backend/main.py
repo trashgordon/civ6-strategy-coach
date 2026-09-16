@@ -137,7 +137,7 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
     )
 
     try:
-        plan = await llm.complete(
+        result = await llm.complete(
             prompts.BUILD_SYSTEM_PROMPT, user_prompt, max_tokens=MAX_PLAN_TOKENS
         )
     except llm.LLMError as exc:
@@ -148,10 +148,10 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
         city_philosophy=payload.city_philosophy,
         primary_focus=payload.primary_focus,
         posture=payload.posture,
-        plan=plan,
+        plan=result.text,
     )
 
-    return db.insert_build(
+    build = db.insert_build(
         title=title,
         config_dict=payload.config,
         civ=payload.civ,
@@ -159,8 +159,19 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
         primary_focus=payload.primary_focus,
         posture=payload.posture,
         playstyle_text=payload.playstyle_text,
-        generated_plan=plan,
+        generated_plan=result.text,
     )
+
+    db.insert_api_call(
+        kind=db.GENERATE,
+        build_id=build["id"],
+        model=result.model,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        cost_usd=result.cost_usd,
+    )
+    build["usage"] = db.usage_for_build(build["id"])
+    return build
 
 
 # -------------------------------------------------------------------------- archive
@@ -182,6 +193,7 @@ def get_build(build_id: int) -> dict[str, Any]:
     build = db.get_build(build_id)
     if build is None:
         raise HTTPException(status_code=404, detail="No build with that id")
+    build["usage"] = db.usage_for_build(build_id)
     return build
 
 
@@ -200,6 +212,17 @@ def delete_build(build_id: int) -> dict[str, Any]:
     return {"deleted": build_id}
 
 
+# ---------------------------------------------------------------------------- usage
+
+
+@app.get("/api/usage", dependencies=[Depends(require_auth)])
+def usage() -> dict[str, Any]:
+    """Lifetime tokens and spend, plus the most recent calls."""
+    totals = db.usage_totals()
+    totals["recent"] = db.recent_api_calls(limit=50)
+    return totals
+
+
 # -------------------------------------------------------------------------- compare
 
 
@@ -212,7 +235,7 @@ async def compare(payload: CompareRequest) -> dict[str, Any]:
         )
 
     try:
-        writeup = await llm.complete(
+        result = await llm.complete(
             prompts.COMPARE_SYSTEM_PROMPT,
             prompts.compare_user_prompt(builds),
             max_tokens=MAX_COMPARE_TOKENS,
@@ -220,9 +243,23 @@ async def compare(payload: CompareRequest) -> dict[str, Any]:
     except llm.LLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    db.insert_api_call(
+        kind=db.COMPARE,
+        model=result.model,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        cost_usd=result.cost_usd,
+    )
+
     return {
         "rows": [summarize.compare_row(build) for build in builds],
-        "writeup": writeup,
+        "writeup": result.text,
+        "usage": {
+            "model": result.model,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
+            "cost_usd": result.cost_usd,
+        },
     }
 
 

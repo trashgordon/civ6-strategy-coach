@@ -5,7 +5,7 @@ import { api } from "../api";
 import { Markdown } from "../markdown";
 import { SERIF, T } from "../theme";
 import {
-  Button, Empty, ErrorNote, Panel, Select, Tag, TextInput, formatDate,
+  Button, Empty, ErrorNote, Panel, Select, Tag, TextInput, UsageNote, formatDate,
 } from "../components/ui";
 
 function BuildRow({ build, active, onSelect }) {
@@ -299,6 +299,12 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey }) {
                 <span style={{ color: T.parchmentDim, fontSize: "0.78rem" }}>
                   {formatDate(selected.created_at)}
                 </span>
+                {selected.usage && (
+                  <>
+                    <UsageNote usage={selected.usage} />
+                    <span style={{ color: T.border }}>·</span>
+                  </>
+                )}
                 {[
                   selected.civ,
                   selected.primary_focus,

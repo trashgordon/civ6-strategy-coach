@@ -53,6 +53,8 @@ export const api = {
     request(`/builds/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
   remove: (id) => request(`/builds/${id}`, { method: "DELETE" }),
 
+  usage: () => request("/usage"),
+
   compare: (buildIds) =>
     request("/compare", { method: "POST", body: JSON.stringify({ build_ids: buildIds }) }),
 };

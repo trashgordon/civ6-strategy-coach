@@ -10,6 +10,7 @@ import { Markdown } from "../markdown";
 import { SERIF, T } from "../theme";
 import {
   Button, Empty, ErrorNote, FieldRow, NumberInput, Panel, Select, Thinking,
+  UsageNote,
 } from "../components/ui";
 
 export default function NewBriefing({ onSaved, onOpenArchive }) {
@@ -238,6 +239,7 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
                   >
                     Saved to your archive — rename or delete it there.
                   </p>
+                  <UsageNote usage={build.usage} style={{ display: "block", marginTop: "0.3rem" }} />
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <Button variant="ghost" onClick={() => onOpenArchive?.(build.id)}>

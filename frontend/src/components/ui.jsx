@@ -253,3 +253,48 @@ export function formatDate(iso) {
     minute: "2-digit",
   });
 }
+
+// --- token / cost formatting -------------------------------------------------
+// Costs are tiny per call, so a flat 2dp would read as "$0.02" for everything and
+// "$0.00" for cheap models. Scale the precision to the amount instead.
+export function formatCost(cost) {
+  if (cost === null || cost === undefined) return null;
+  if (cost === 0) return "free";
+  // A single call lands around a cent or two, so 2dp would flatten every call to the
+  // same "$0.02". Stay at 4dp until the running total is actually into dollars.
+  if (cost < 1) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
+export function formatTokens(count) {
+  if (count === null || count === undefined) return null;
+  return count.toLocaleString();
+}
+
+// One line of "what this call cost", for a dossier or compare header.
+export function UsageNote({ usage, style }) {
+  if (!usage) return null;
+
+  const cost = formatCost(usage.cost_usd);
+  const inTokens = formatTokens(usage.prompt_tokens);
+  const outTokens = formatTokens(usage.completion_tokens);
+
+  const parts = [];
+  if (inTokens && outTokens) parts.push(`${inTokens} in / ${outTokens} out`);
+  // A null cost means the model isn't in the pricing table — say so rather than "$0".
+  parts.push(cost ?? "cost unknown");
+
+  return (
+    <span
+      style={{
+        color: T.parchmentDim,
+        fontSize: "0.73rem",
+        fontVariantNumeric: "tabular-nums",
+        ...style,
+      }}
+      title={`${usage.model || "model"} — token usage and estimated cost`}
+    >
+      {parts.join(" · ")}
+    </span>
+  );
+}

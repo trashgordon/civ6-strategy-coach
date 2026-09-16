@@ -47,21 +47,48 @@ def isolated_env(tmp_path: Path, monkeypatch):
 
 @pytest.fixture
 def stub_llm(monkeypatch):
-    """Replace the LLM call, recording the prompts it was handed."""
+    """Replace the LLM call, recording the prompts it was handed.
+
+    Returns the same Completion shape the real call does, with usage attached, so the
+    cost-accounting path is exercised rather than bypassed.
+    """
     calls: list[dict] = []
 
-    async def fake_complete(system_prompt: str, user_prompt: str, max_tokens: int) -> str:
+    from backend import llm
+
+    async def fake_complete(system_prompt: str, user_prompt: str, max_tokens: int):
         calls.append(
             {"system": system_prompt, "user": user_prompt, "max_tokens": max_tokens}
         )
         if "compare-and-contrast" in system_prompt:
-            return "## Common ground\nBoth lean on **Seowon** adjacency."
-        return SAMPLE_PLAN
-
-    from backend import llm
+            return llm.Completion(
+                text="## Common ground\nBoth lean on **Seowon** adjacency.",
+                model="anthropic/claude-sonnet-4-6",
+                prompt_tokens=3904,
+                completion_tokens=402,
+                cost_usd=0.0177,
+            )
+        return llm.Completion(
+            text=SAMPLE_PLAN,
+            model="anthropic/claude-sonnet-4-6",
+            prompt_tokens=1182,
+            completion_tokens=878,
+            cost_usd=0.0167,
+        )
 
     monkeypatch.setattr(llm, "complete", fake_complete)
     return calls
+
+
+@pytest.fixture
+def stub_llm_without_usage(monkeypatch):
+    """A provider that reports no usage and a model with no price."""
+    from backend import llm
+
+    async def fake_complete(system_prompt: str, user_prompt: str, max_tokens: int):
+        return llm.Completion(text=SAMPLE_PLAN, model="ollama/llama3.1")
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
 
 
 @pytest.fixture

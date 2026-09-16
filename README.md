@@ -103,6 +103,32 @@ Back it up by copying that one file.
 Schema changes are applied at startup from `PRAGMA user_version`, so `git pull`-ing an
 update keeps your existing builds — no migration commands to run.
 
+### Token usage and cost
+
+Every model call is logged to an `api_calls` table with its token counts and estimated
+dollar cost — build generations and compare calls alike. You'll see:
+
+- the running total in the header, e.g. `$0.0512 over 3 calls`
+- per-call tokens and cost next to each plan in the Archive, and under the compare writeup
+- the full breakdown at `GET /api/usage` (lifetime totals, split by call kind, plus the
+  50 most recent calls)
+
+Costs come from [LiteLLM's pricing map](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json),
+which covers a few thousand models, so the figure is an **estimate from list prices** —
+it won't know about your discounts, and it can't see cache hits or batch pricing. A model
+LiteLLM has no price for is still logged, with cost recorded as unknown rather than zero;
+the running total then shows as `≥ $x` so it doesn't quietly under-report. Local models
+(Ollama and friends) correctly come out as free.
+
+Cost accounting never fails a request — if the price lookup breaks, you still get your
+plan and the call is logged without a cost.
+
+To total it up yourself:
+
+```bash
+sqlite3 data/strategies.db "SELECT kind, COUNT(*), ROUND(SUM(cost_usd), 4) FROM api_calls GROUP BY kind;"
+```
+
 ### Password gate
 
 There's no login by default, which is the right thing when it's just you on localhost.
@@ -118,12 +144,13 @@ frontend/  React + Vite, built to static files
 backend/   FastAPI — serves the API and those static files on one port
   prompts.py     both system prompts, verbatim from the brief
   llm.py         the single LiteLLM call
-  db.py          SQLite + PRAGMA user_version migrations
+  db.py          SQLite + PRAGMA user_version migrations (saved_builds, api_calls)
 ```
 
 The three tabs map to three endpoints: `POST /api/generate` (generate + auto-save),
 `GET /api/builds` (archive, with search and filters), and `POST /api/compare` (the
 side-by-side table plus a compare-and-contrast writeup from a second prompt).
+`GET /api/usage` reports what all of it has cost.
 
 ## Development
 

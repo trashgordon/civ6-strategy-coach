@@ -1,16 +1,37 @@
 """The one place we talk to a model.
 
 Everything goes through LiteLLM so the provider is a matter of the MODEL env var, not a
-code change. Nothing here is Anthropic-specific.
+code change. Nothing here is Anthropic-specific — including the cost accounting, which
+uses LiteLLM's own pricing map rather than hardcoded per-provider rates.
 """
 
+import logging
 import os
+from dataclasses import dataclass
 
 from . import config
+
+log = logging.getLogger("civ6.llm")
 
 
 class LLMError(RuntimeError):
     """Something went wrong talking to the model — message is safe to show the user."""
+
+
+@dataclass(frozen=True)
+class Completion:
+    """A model response plus what it cost to get it.
+
+    Token counts and cost are optional on purpose: a provider may not report usage, and
+    LiteLLM's pricing map doesn't know every model. None means "we couldn't tell", which
+    is different from 0.0 — a local Ollama model genuinely costs nothing.
+    """
+
+    text: str
+    model: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None
 
 
 # Provider prefix -> the env var LiteLLM expects for it. Only used to give a useful
@@ -47,7 +68,7 @@ def missing_key_hint() -> str | None:
     return None
 
 
-async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> str:
+async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Completion:
     hint = missing_key_hint()
     if hint:
         raise LLMError(
@@ -58,9 +79,10 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> str
     # Imported lazily: litellm is slow to import, and startup shouldn't pay for it.
     import litellm
 
+    model_name = config.model()
     try:
         response = await litellm.acompletion(
-            model=config.model(),
+            model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -73,7 +95,15 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> str
     text = _extract_text(response)
     if not text:
         raise LLMError("The coach came back empty-handed. Try again.")
-    return text
+
+    prompt_tokens, completion_tokens = _extract_usage(response)
+    return Completion(
+        text=text,
+        model=model_name,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=_extract_cost(response, model_name),
+    )
 
 
 def _extract_text(response) -> str:
@@ -93,3 +123,38 @@ def _extract_text(response) -> str:
         ]
         return "\n".join(part for part in parts if part).strip()
     return ""
+
+
+def _extract_usage(response) -> tuple[int | None, int | None]:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None, None
+
+    def count(*names):
+        for name in names:
+            value = getattr(usage, name, None)
+            if value is None and isinstance(usage, dict):
+                value = usage.get(name)
+            if isinstance(value, int):
+                return value
+        return None
+
+    return count("prompt_tokens", "input_tokens"), count(
+        "completion_tokens", "output_tokens"
+    )
+
+
+def _extract_cost(response, model_name: str) -> float | None:
+    """Dollar cost from LiteLLM's pricing map.
+
+    Never allowed to fail the request: an unpriced model raises inside LiteLLM, and a
+    missing price is not a reason to throw away a plan the user already paid for.
+    """
+    import litellm
+
+    try:
+        cost = litellm.completion_cost(completion_response=response, model=model_name)
+    except Exception as exc:
+        log.debug("no cost available for %s: %s", model_name, exc)
+        return None
+    return float(cost) if cost is not None else None

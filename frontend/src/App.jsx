@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { SANS, SERIF, T } from "./theme";
-import { Button, ErrorNote } from "./components/ui";
+import { Button, ErrorNote, formatCost } from "./components/ui";
 import NewBriefing from "./views/NewBriefing";
 import Archive from "./views/Archive";
 import Compare from "./views/Compare";
@@ -50,6 +50,7 @@ function Tabs({ active, onChange }) {
 export default function App() {
   const [meta, setMeta] = useState(null);
   const [metaError, setMetaError] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [tab, setTab] = useState("new");
   // Bumped whenever a build is saved or deleted, so the other tabs refetch.
   const [refreshKey, setRefreshKey] = useState(0);
@@ -67,6 +68,12 @@ export default function App() {
   useEffect(() => {
     loadMeta();
   }, [loadMeta]);
+
+  // Lifetime spend, refreshed whenever a call is made.
+  useEffect(() => {
+    if (!meta || (meta.auth_required && !meta.authenticated)) return;
+    api.usage().then(setUsage).catch(() => setUsage(null));
+  }, [meta, refreshKey]);
 
   if (metaError) {
     return (
@@ -149,6 +156,22 @@ export default function App() {
               {meta.missing_key && (
                 <div style={{ color: T.rust }}>{meta.missing_key} not set</div>
               )}
+              {usage && usage.calls > 0 && (
+                <div
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                  title={
+                    `${usage.prompt_tokens.toLocaleString()} prompt + ` +
+                    `${usage.completion_tokens.toLocaleString()} completion tokens` +
+                    (usage.has_unpriced_calls
+                      ? " — some calls used a model with no published price"
+                      : "")
+                  }
+                >
+                  {usage.has_unpriced_calls ? "≥ " : ""}
+                  {formatCost(usage.cost_usd)} over {usage.calls}{" "}
+                  {usage.calls === 1 ? "call" : "calls"}
+                </div>
+              )}
               {meta.auth_required && (
                 <Button
                   variant="ghost"
@@ -182,7 +205,12 @@ export default function App() {
             onFocusConsumed={() => setFocusBuildId(null)}
           />
         )}
-        {tab === "compare" && <Compare refreshKey={refreshKey} />}
+        {tab === "compare" && (
+          <Compare
+            refreshKey={refreshKey}
+            onCompared={() => setRefreshKey((k) => k + 1)}
+          />
+        )}
       </main>
 
       <footer
