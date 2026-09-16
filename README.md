@@ -22,7 +22,7 @@ You run it yourself, with your own LLM API key. No hosted instance, no accounts.
 You need **Python 3.10+** and **Node 18+** (Node is only used to build the frontend once).
 
 ```bash
-git clone <your-fork-url> civ6-strategy-coach
+git clone https://github.com/trashgordon/civ6-strategy-coach.git
 cd civ6-strategy-coach
 cp .env.example .env        # then put your API key in it
 ```
