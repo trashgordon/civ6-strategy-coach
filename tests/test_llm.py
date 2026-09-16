@@ -94,3 +94,63 @@ def test_missing_key_hint_is_quiet_for_local_models(monkeypatch):
     monkeypatch.setenv("MODEL", "openai/gpt-5")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     assert llm.missing_key_hint() == "OPENAI_API_KEY"
+
+
+# ------------------------------------------------------------- prompt caching
+
+
+def test_a_short_system_prompt_is_not_cached():
+    """Below the provider's minimum cacheable prefix, a breakpoint is pure overhead."""
+    message = llm._system_message("short prompt", "anthropic/claude-sonnet-5")
+    assert message == {"role": "system", "content": "short prompt"}
+
+
+def test_a_long_system_prompt_gets_a_cache_breakpoint(monkeypatch):
+    monkeypatch.setattr(llm, "_supports_caching", lambda model: True)
+    big = "x" * (llm._MIN_CACHEABLE_CHARS + 1)
+
+    message = llm._system_message(big, "anthropic/claude-sonnet-5")
+
+    assert message["role"] == "system"
+    assert message["content"][0]["cache_control"] == {"type": "ephemeral"}
+    assert message["content"][0]["text"] == big
+
+
+def test_caching_is_skipped_on_providers_that_cannot_do_it(monkeypatch):
+    """A local Ollama model would choke on a cache_control block."""
+    monkeypatch.setattr(llm, "_supports_caching", lambda model: False)
+    big = "x" * (llm._MIN_CACHEABLE_CHARS + 1)
+    assert llm._system_message(big, "ollama/llama3.1")["content"] == big
+
+
+def test_caching_can_be_turned_off(monkeypatch):
+    monkeypatch.setattr(llm, "_supports_caching", lambda model: True)
+    monkeypatch.setenv("PROMPT_CACHE", "0")
+    big = "x" * (llm._MIN_CACHEABLE_CHARS + 1)
+    assert llm._system_message(big, "anthropic/claude-sonnet-5")["content"] == big
+
+
+def test_cache_usage_is_read_from_the_response():
+    class Usage:
+        cache_creation_input_tokens = 5819
+        cache_read_input_tokens = 0
+
+    response = FakeResponse("plan")
+    response.usage = Usage()
+    assert llm._extract_cache_usage(response) == (5819, 0)
+
+
+def test_cache_usage_falls_back_to_the_openai_shape():
+    class Details:
+        cached_tokens = 4096
+
+    class Usage:
+        prompt_tokens_details = Details()
+
+    response = FakeResponse("plan")
+    response.usage = Usage()
+    assert llm._extract_cache_usage(response) == (None, 4096)
+
+
+def test_missing_cache_reporting_is_not_an_error():
+    assert llm._extract_cache_usage(FakeResponse("plan", usage=None)) == (None, None)

@@ -26,6 +26,12 @@ class LLMError(RuntimeError):
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low").strip().lower() or "low"
 
 
+# Caching only pays for a prefix big enough to clear the provider's minimum (1024-4096
+# tokens depending on model) and stable across calls. The system prompt clears that only
+# once the game-facts block is attached; the bare prompt is far too small to bother with.
+_MIN_CACHEABLE_CHARS = 8000
+
+
 @dataclass(frozen=True)
 class Completion:
     """A model response plus what it cost to get it.
@@ -40,6 +46,10 @@ class Completion:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     cost_usd: float | None = None
+    # Prompt-cache accounting. None when the provider reports nothing; 0 is a real
+    # answer meaning "cacheable request, but nothing was written or read this time".
+    cache_write_tokens: int | None = None
+    cache_read_tokens: int | None = None
 
 
 # Provider prefix -> the env var LiteLLM expects for it. Only used to give a useful
@@ -96,7 +106,7 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Com
         response = await litellm.acompletion(
             model=model_name,
             messages=[
-                {"role": "system", "content": system_prompt},
+                _system_message(system_prompt, model_name),
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=max_tokens,
@@ -110,13 +120,83 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Com
         raise LLMError(_empty_response_reason(response, max_tokens))
 
     prompt_tokens, completion_tokens = _extract_usage(response)
+    cache_write, cache_read = _extract_cache_usage(response)
     return Completion(
         text=text,
         model=model_name,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         cost_usd=_extract_cost(response, model_name),
+        cache_write_tokens=cache_write,
+        cache_read_tokens=cache_read,
     )
+
+
+def caching_enabled() -> bool:
+    return os.getenv("PROMPT_CACHE", "1").strip().lower() not in {"0", "false", "no"}
+
+
+def _supports_caching(model_name: str) -> bool:
+    try:
+        from litellm.utils import supports_prompt_caching
+
+        return bool(supports_prompt_caching(model=model_name))
+    except Exception:
+        return False
+
+
+def _system_message(system_prompt: str, model_name: str) -> dict:
+    """The system turn, marked as a cache breakpoint when that's worth doing.
+
+    The system prompt is byte-identical between generations once the facts block is
+    attached, which makes it an ideal cache prefix. The volatile part — the player's
+    configuration — lives in the user turn, after the breakpoint, so it never invalidates
+    the cache.
+    """
+    if (
+        not caching_enabled()
+        or len(system_prompt) < _MIN_CACHEABLE_CHARS
+        or not _supports_caching(model_name)
+    ):
+        return {"role": "system", "content": system_prompt}
+
+    return {
+        "role": "system",
+        "content": [
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+    }
+
+
+def _extract_cache_usage(response) -> tuple[int | None, int | None]:
+    """Tokens written to and read from the prompt cache, if the provider reports them."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None, None
+
+    def count(*names):
+        for name in names:
+            value = getattr(usage, name, None)
+            if value is None and isinstance(usage, dict):
+                value = usage.get(name)
+            if isinstance(value, int):
+                return value
+        return None
+
+    write = count("cache_creation_input_tokens")
+    read = count("cache_read_input_tokens")
+    if read is None:
+        # OpenAI reports it nested under prompt_tokens_details.cached_tokens.
+        details = getattr(usage, "prompt_tokens_details", None)
+        if details is not None:
+            cached = getattr(details, "cached_tokens", None)
+            if isinstance(cached, int):
+                read = cached
+    return write, read
 
 
 def _finish_reason(response) -> str:

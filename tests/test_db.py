@@ -93,7 +93,7 @@ def test_a_v1_database_upgrades_to_v2_without_losing_builds():
     assert "api_calls" not in tables_before
 
     # Now upgrade, the way startup does.
-    assert db.migrate() == 2
+    assert db.migrate() == db.CURRENT_VERSION
 
     # The pre-existing build is untouched...
     still_there = db.get_build(saved["id"])
@@ -120,3 +120,27 @@ def test_usage_totals_ignore_nulls_but_flag_them():
     assert totals["prompt_tokens"] == 100          # the NULL doesn't poison the sum
     assert totals["cost_usd"] == 0.01
     assert totals["has_unpriced_calls"] is True
+
+
+def test_a_v2_database_gains_the_cache_columns_without_losing_calls():
+    """Someone who used the cost-tracking release before prompt caching existed."""
+    conn = db.connect()
+    with conn:
+        conn.executescript(db.SCHEMA_V1)
+        conn.executescript(db.SCHEMA_V2)
+        conn.execute("PRAGMA user_version = 2")
+        conn.execute(
+            "INSERT INTO api_calls (created_at, kind, model, prompt_tokens, "
+            "completion_tokens, cost_usd) VALUES ('2026-01-01', 'generate', 'm', 10, 5, 0.01)"
+        )
+
+    assert db.migrate() == db.CURRENT_VERSION
+
+    columns = {r["name"] for r in conn.execute("PRAGMA table_info(api_calls)")}
+    assert {"cache_write_tokens", "cache_read_tokens"} <= columns
+
+    # The pre-existing call survives, with the new columns simply unknown.
+    totals = db.usage_totals()
+    assert totals["calls"] == 1
+    assert totals["cost_usd"] == 0.01
+    assert totals["cache_read_tokens"] == 0

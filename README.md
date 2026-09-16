@@ -90,6 +90,7 @@ All of it optional except the model and its key.
 | `MODEL` | `anthropic/claude-sonnet-5` | LiteLLM model string |
 | *provider key* | — | e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` |
 | `REASONING_EFFORT` | `low` | Reasoning depth on models that reason (see below) |
+| `PROMPT_CACHE` | `1` | Cache the game-facts prompt prefix (see below) |
 | `CIV6_PATH` | auto-detected | Your Civ VI install, for game-data grounding |
 | `FACTS_PATH` | `./data/facts` | Where extracted game names are cached |
 | `DB_PATH` | `./data/strategies.db` | Where your saved builds live |
@@ -121,6 +122,23 @@ Two things then happen:
   (about +$0.012 on Claude Sonnet 5).
 - **Detection** — every name the coach puts in bold is checked against the data
   afterwards, and anything unrecognised is flagged above the plan with a ⚠ marker. Free.
+
+#### Prompt caching
+
+The facts block is byte-identical on every call, so it's sent as a cached prefix — the
+volatile part (your configuration) sits after the breakpoint and never invalidates it.
+Measured on Claude Sonnet 5 with a 5,819-token facts block:
+
+| | cost |
+| --- | --- |
+| First plan (writes the cache) | $0.0299 |
+| Next plan within the window | **$0.0148** |
+
+Cache reads are a tenth the price of fresh input, writes are 1.25×. So the honest
+trade: **two plans inside the provider's cache window (~5 minutes) and you're well
+ahead; a single isolated plan costs about $0.003 more** than not caching. Generating a
+few builds in one sitting is exactly the winning case. Set `PROMPT_CACHE=0` to turn it
+off. The header tooltip reports how many tokens have been served from cache.
 
 **The extracted data is never committed.** Those names are Firaxis/2K's copyrighted
 content, so this repo ships the extractor, not the output — `data/` is gitignored, and

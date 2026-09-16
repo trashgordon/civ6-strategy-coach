@@ -52,10 +52,17 @@ CREATE INDEX IF NOT EXISTS idx_api_calls_created_at ON api_calls (created_at DES
 CREATE INDEX IF NOT EXISTS idx_api_calls_build_id ON api_calls (build_id);
 """
 
+# Prompt-cache accounting. Nullable, so every row written before v3 stays valid.
+SCHEMA_V3 = """
+ALTER TABLE api_calls ADD COLUMN cache_write_tokens INTEGER;
+ALTER TABLE api_calls ADD COLUMN cache_read_tokens INTEGER;
+"""
+
 # version -> SQL to reach that version. Append only.
 MIGRATIONS: list[tuple[int, str]] = [
     (1, SCHEMA_V1),
     (2, SCHEMA_V2),
+    (3, SCHEMA_V3),
 ]
 
 CURRENT_VERSION = MIGRATIONS[-1][0]
@@ -256,6 +263,8 @@ def insert_api_call(
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,
     cost_usd: float | None = None,
+    cache_write_tokens: int | None = None,
+    cache_read_tokens: int | None = None,
 ) -> int:
     """Record one model call. Never raises on a cost we couldn't determine — the
     columns are nullable precisely so an unpriced model still gets logged."""
@@ -266,11 +275,13 @@ def insert_api_call(
             """
             INSERT INTO api_calls (
                 created_at, kind, build_id, model,
-                prompt_tokens, completion_tokens, cost_usd
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                prompt_tokens, completion_tokens, cost_usd,
+                cache_write_tokens, cache_read_tokens
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (created_at, kind, build_id, model or "",
-             prompt_tokens, completion_tokens, cost_usd),
+             prompt_tokens, completion_tokens, cost_usd,
+             cache_write_tokens, cache_read_tokens),
         )
     return cursor.lastrowid  # type: ignore[return-value]
 
@@ -281,6 +292,8 @@ def _usage_row(row: sqlite3.Row) -> dict[str, Any]:
         "prompt_tokens": row["prompt_tokens"] or 0,
         "completion_tokens": row["completion_tokens"] or 0,
         "cost_usd": row["cost_usd"] or 0.0,
+        "cache_write_tokens": row["cache_write_tokens"] or 0,
+        "cache_read_tokens": row["cache_read_tokens"] or 0,
         # True when at least one call had no price, so a total can be shown as "at least".
         "has_unpriced_calls": bool(row["unpriced"]),
     }
@@ -291,6 +304,8 @@ SELECT COUNT(*)                                   AS calls,
        COALESCE(SUM(prompt_tokens), 0)            AS prompt_tokens,
        COALESCE(SUM(completion_tokens), 0)        AS completion_tokens,
        COALESCE(SUM(cost_usd), 0.0)               AS cost_usd,
+       COALESCE(SUM(cache_write_tokens), 0)       AS cache_write_tokens,
+       COALESCE(SUM(cache_read_tokens), 0)        AS cache_read_tokens,
        SUM(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) AS unpriced
 FROM api_calls
 """

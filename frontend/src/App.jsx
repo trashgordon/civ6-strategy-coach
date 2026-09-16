@@ -162,6 +162,9 @@ export default function App() {
                   title={
                     `${usage.prompt_tokens.toLocaleString()} prompt + ` +
                     `${usage.completion_tokens.toLocaleString()} completion tokens` +
+                    (usage.cache_read_tokens
+                      ? ` — ${usage.cache_read_tokens.toLocaleString()} tokens served from cache`
+                      : "") +
                     (usage.has_unpriced_calls
                       ? " — some calls used a model with no published price"
                       : "")

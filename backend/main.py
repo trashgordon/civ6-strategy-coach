@@ -178,6 +178,8 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
         prompt_tokens=result.prompt_tokens,
         completion_tokens=result.completion_tokens,
         cost_usd=result.cost_usd,
+        cache_write_tokens=result.cache_write_tokens,
+        cache_read_tokens=result.cache_read_tokens,
     )
     build["usage"] = db.usage_for_build(build["id"])
     # Names the coach asserted that aren't in the installed game data. Empty when no
@@ -262,6 +264,8 @@ async def compare(payload: CompareRequest) -> dict[str, Any]:
         prompt_tokens=result.prompt_tokens,
         completion_tokens=result.completion_tokens,
         cost_usd=result.cost_usd,
+        cache_write_tokens=result.cache_write_tokens,
+        cache_read_tokens=result.cache_read_tokens,
     )
 
     return {
