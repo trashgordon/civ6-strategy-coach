@@ -6,6 +6,8 @@ cost two requests, and the title is editable anyway.
 
 import re
 
+from .gamedata import match_civ
+
 NO_PREFERENCE = "No preference"
 
 
@@ -25,8 +27,13 @@ def civ_from_plan(plan: str) -> str:
         return ""
 
     body = plan
-    first_header = re.search(r"^##\s+.*$", plan, flags=re.MULTILINE)
+    first_header = re.search(r"^##\s+(.*)$", plan, flags=re.MULTILINE)
     if first_header:
+        # Older plans (before the prompt pinned the headers) sometimes put the pick in
+        # the header itself — "## Civ & Leader: Rome (Trajan)".
+        from_header = match_civ(first_header.group(1))
+        if from_header:
+            return from_header
         body = plan[first_header.end() :]
     # Stop at the next section so we never read the tech path by mistake.
     next_header = re.search(r"^##\s+", body, flags=re.MULTILINE)
@@ -42,8 +49,16 @@ def civ_from_plan(plan: str) -> str:
                 candidate = line
                 break
 
-    # "Korea — Seondeok" / "Korea - Seondeok" / "Korea (Seondeok)" -> "Korea"
-    candidate = re.split(r"\s*[—–\-:(]\s*", candidate, maxsplit=1)[0]
+    # Match a known civ anywhere in the candidate rather than assuming which side of the
+    # separator it sits on: the coach writes both "Rome — Trajan" (civ first) and
+    # "Kupe / Māori" (leader first), so taking the first token is wrong half the time.
+    civ = match_civ(candidate)
+    if civ:
+        return civ
+
+    # An unrecognised civ (a mod, or a name the list doesn't carry) falls back to the
+    # first segment, which is right for the "Civ — Leader" shape.
+    candidate = re.split(r"\s*[—–/\-:(]\s*", candidate, maxsplit=1)[0]
     candidate = candidate.strip(" *.,’'\"")
     # Anything long is prose, not a civ name.
     if not candidate or len(candidate) > 28:

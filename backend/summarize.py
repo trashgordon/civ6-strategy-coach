@@ -38,18 +38,89 @@ _NEGATED_LINE = re.compile(
 )
 
 
-def _emphasized(text: str) -> list[str]:
-    """Bolded terms first; they're how the coach marks the things that matter."""
+# Connector words the coach opens a clause with — "Then Construction", "Beeline
+# Education". The name is what follows.
+_LEAD_CONNECTOR = re.compile(
+    r"^(?:then|next|beeline|rush|grab|take|get|build|go|head|open|start|prioriti[sz]e"
+    r"|straight to|follow with|pick up)\s+",
+    re.IGNORECASE,
+)
+
+# Lowercase particles that legitimately appear inside a Civ VI name:
+# "Games & Recreation", "Defender of the Faith", "Pen, Brush and Voice".
+_NAME_PARTICLES = {"and", "of", "the", "&"}
+
+
+def _looks_like_a_name(term: str) -> bool:
+    """A tech, civic or wonder is Title Case. Prose fragments are not.
+
+    "Political Philosophy" and "Defender of the Faith" pass; "Key pivots", "policy card
+    gold" and "unlocks Great Writers" do not.
+    """
+    words = term.split()
+    if not words or len(words) > 5:
+        return False
+    if not words[0][:1].isupper():
+        return False
+    for word in words[1:]:
+        stripped = word.strip(",.;:&")
+        if not stripped or stripped.lower() in _NAME_PARTICLES:
+            continue
+        if not stripped[:1].isupper():
+            return False
+    return True
+
+
+def _leading_name(text: str) -> str:
+    """The Title Case run at the start of a clause.
+
+    "Bronze Working for Legions" -> "Bronze Working". Stops at the first lowercase word
+    that isn't a particle joining a longer name.
+    """
+    kept: list[str] = []
+    for word in text.split():
+        bare = word.strip(",.;:&")
+        if not bare:
+            continue
+        if bare[:1].isupper():
+            kept.append(word)
+            continue
+        if bare.lower() in _NAME_PARTICLES and kept:
+            kept.append(word)
+            continue
+        break
+    # A trailing particle belongs to the prose that followed, not the name.
+    while kept and kept[-1].strip(",.;:&").lower() in _NAME_PARTICLES:
+        kept.pop()
+    return " ".join(kept)
+
+
+def _split_chain(term: str) -> list[str]:
+    """A bolded beeline is one run: "Writing → Currency → Astrology". Split it.
+
+    Without this, plan-length arrow chains blow past the length cap and are dropped
+    whole, leaving the compare column empty.
+    """
+    parts = re.split(r"\s*(?:→|->|➜|»)\s*", term)
+    return [part.strip(" .,;:—–-*") for part in parts if part.strip()]
+
+
+def _candidates(text: str) -> list[str]:
+    """Bolded names, arrow-chains expanded, prose fragments rejected."""
     terms: list[str] = []
     for line in text.splitlines():
         if _NEGATED_LINE.search(line):
             continue
-        terms.extend(t.strip(" .,;:—–-") for t in re.findall(r"\*\*(.+?)\*\*", line))
-    return [t for t in terms if t and len(t) <= 40]
+        for bold in re.findall(r"\*\*(.+?)\*\*", line):
+            for piece in _split_chain(bold):
+                piece = _LEAD_CONNECTOR.sub("", piece).strip(" .,;:—–-")
+                if piece and len(piece) <= 40 and _looks_like_a_name(piece):
+                    terms.append(piece)
+    return terms
 
 
 def _bullet_leads(text: str) -> list[str]:
-    """Fallback: the first clause of each bullet."""
+    """Fallback for plans that bold nothing: the leading name of each bullet."""
     leads = []
     for line in text.splitlines():
         line = line.strip()
@@ -59,9 +130,12 @@ def _bullet_leads(text: str) -> list[str]:
             continue
         line = re.sub(r"^[-*]\s+|^\d+[.)]\s+", "", line)
         line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
-        lead = re.split(r"\s*[—–:(]\s*|\s+-\s+", line, maxsplit=1)[0].strip(" .,;")
-        if lead and len(lead) <= 40:
-            leads.append(lead)
+        lead = re.split(r"\s*[—–:(]\s*|\s+-\s+", line, maxsplit=1)[0]
+        for piece in _split_chain(lead):
+            piece = _LEAD_CONNECTOR.sub("", piece).strip(" .,;:")
+            piece = _leading_name(piece)
+            if piece and len(piece) <= 40 and _looks_like_a_name(piece):
+                leads.append(piece)
     return leads
 
 
@@ -88,12 +162,12 @@ def key_techs_and_wonders(plan: str, limit: int = 6) -> list[str]:
     harvested: list[str] = []
     for header, body in parsed.items():
         if any(keyword in header for keyword in _TECH_SECTIONS):
-            harvested.extend(_emphasized(body) or _bullet_leads(body))
+            harvested.extend(_candidates(body) or _bullet_leads(body))
 
     # Wonders get named all over the plan, so sweep any section that mentions them.
     for header, body in parsed.items():
         if _WONDER_HINT.search(header) or _WONDER_HINT.search(body):
-            harvested.extend(term for term in _emphasized(body) if term not in harvested)
+            harvested.extend(term for term in _candidates(body) if term not in harvested)
 
     return _dedupe(harvested, limit)
 
