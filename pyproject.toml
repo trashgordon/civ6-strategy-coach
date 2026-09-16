@@ -12,6 +12,11 @@ dependencies = [
     "python-dotenv>=1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/trashgordon/civ6-strategy-coach"
+Repository = "https://github.com/trashgordon/civ6-strategy-coach"
+Issues = "https://github.com/trashgordon/civ6-strategy-coach/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
