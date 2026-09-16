@@ -18,6 +18,14 @@ class LLMError(RuntimeError):
     """Something went wrong talking to the model — message is safe to show the user."""
 
 
+# Reasoning models (Claude Sonnet 5, Opus 5, o-series, Gemini thinking) burn output
+# tokens on internal reasoning before writing a word of the answer. Left unbounded, a
+# reasoning model spends the entire max_tokens budget thinking and returns empty text.
+# LiteLLM's `reasoning_effort` is the provider-agnostic dial for that, so we keep it low:
+# the coach's output is a deliberately short brief, not a proof.
+REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low").strip().lower() or "low"
+
+
 @dataclass(frozen=True)
 class Completion:
     """A model response plus what it cost to get it.
@@ -79,6 +87,10 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Com
     # Imported lazily: litellm is slow to import, and startup shouldn't pay for it.
     import litellm
 
+    # Any provider that doesn't understand a parameter we send gets it stripped rather
+    # than erroring — the whole point of going through LiteLLM.
+    litellm.drop_params = True
+
     model_name = config.model()
     try:
         response = await litellm.acompletion(
@@ -88,13 +100,14 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Com
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=max_tokens,
+            reasoning_effort=REASONING_EFFORT,
         )
     except Exception as exc:  # LiteLLM raises a wide family of provider errors
         raise LLMError(f"The model call failed: {exc}") from exc
 
     text = _extract_text(response)
     if not text:
-        raise LLMError("The coach came back empty-handed. Try again.")
+        raise LLMError(_empty_response_reason(response, max_tokens))
 
     prompt_tokens, completion_tokens = _extract_usage(response)
     return Completion(
@@ -104,6 +117,24 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Com
         completion_tokens=completion_tokens,
         cost_usd=_extract_cost(response, model_name),
     )
+
+
+def _finish_reason(response) -> str:
+    try:
+        return response.choices[0].finish_reason or ""
+    except (AttributeError, IndexError, KeyError, TypeError):
+        return ""
+
+
+def _empty_response_reason(response, max_tokens: int) -> str:
+    """Say *why* nothing came back — "empty-handed" on its own is undebuggable."""
+    if _finish_reason(response) == "length":
+        return (
+            f"The model used its entire {max_tokens}-token budget without finishing the "
+            f"plan. If MODEL is a reasoning model, reasoning consumed the budget — lower "
+            f"REASONING_EFFORT (currently {REASONING_EFFORT!r}) or raise the cap."
+        )
+    return "The coach came back empty-handed. Try again."
 
 
 def _extract_text(response) -> str:

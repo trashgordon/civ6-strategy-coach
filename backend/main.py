@@ -13,8 +13,13 @@ from . import auth, config, db, llm, prompts, summarize, titles
 
 log = logging.getLogger("civ6")
 
-MAX_PLAN_TOKENS = 2000      # ~700 words, with headroom
-MAX_COMPARE_TOKENS = 1400   # ~400 words, with headroom
+# The prompts cap the prose at ~700 and ~400 words (roughly 1000 and 550 tokens), but a
+# reasoning model spends tokens thinking before it writes any of that. Measured on Claude
+# Sonnet 5 at REASONING_EFFORT=low: a full plan lands around 1,900 output tokens. These
+# caps leave room for that without going so high that a non-streaming request risks an
+# HTTP timeout.
+MAX_PLAN_TOKENS = 4000
+MAX_COMPARE_TOKENS = 2500
 
 
 @asynccontextmanager

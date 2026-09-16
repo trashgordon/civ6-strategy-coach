@@ -61,7 +61,7 @@ supports works. Set `MODEL` in your `.env` plus whichever API key matches:
 
 ```ini
 # Anthropic
-MODEL=anthropic/claude-sonnet-4-6
+MODEL=anthropic/claude-sonnet-5
 ANTHROPIC_API_KEY=sk-ant-...
 
 # OpenAI
@@ -87,12 +87,27 @@ All of it optional except the model and its key.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `MODEL` | `anthropic/claude-sonnet-4-6` | LiteLLM model string |
+| `MODEL` | `anthropic/claude-sonnet-5` | LiteLLM model string |
 | *provider key* | — | e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` |
+| `REASONING_EFFORT` | `low` | Reasoning depth on models that reason (see below) |
 | `DB_PATH` | `./data/strategies.db` | Where your saved builds live |
 | `APP_PASSWORD` | unset | Set it to turn on a password gate (see below) |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8000` | Port |
+
+### Reasoning models
+
+Current reasoning models (Claude Sonnet 5 and Opus 5, OpenAI o-series, Gemini thinking
+models) spend output tokens on internal reasoning *before* writing any of the answer.
+Left unbounded, reasoning eats the entire token budget and you get an empty plan.
+
+`REASONING_EFFORT` defaults to `low`, which is right for this app — the coach's brief is
+deliberately short, not a proof. Measured on Claude Sonnet 5: a full 8-section plan costs
+about 1,900 output tokens and lands at ~$0.02. Raise it to `medium` or `high` if you want
+more deliberation and are happy to pay for it. Models that don't reason ignore it.
+
+If a plan ever comes back empty, the error names the cause and the knob to turn rather
+than just shrugging.
 
 ### Your data
 
