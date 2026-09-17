@@ -108,7 +108,7 @@ function CompareTable({ rows }) {
   );
 }
 
-export default function Compare({ refreshKey, onCompared }) {
+export default function Compare({ refreshKey, onCompared, seedBuildId, onSeedConsumed }) {
   const [builds, setBuilds] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [listError, setListError] = useState(null);
@@ -129,6 +129,16 @@ export default function Compare({ refreshKey, onCompared }) {
   useEffect(() => {
     loadList();
   }, [loadList, refreshKey]);
+
+  // Arriving from "Compare with…" — tick that build and let the user pick the rest.
+  useEffect(() => {
+    if (!seedBuildId) return;
+    setSelectedIds((current) =>
+      current.includes(seedBuildId) ? current : [...current, seedBuildId]
+    );
+    setResult(null);
+    onSeedConsumed?.();
+  }, [seedBuildId, onSeedConsumed]);
 
   function toggle(id) {
     setSelectedIds((current) =>
@@ -228,7 +238,9 @@ export default function Compare({ refreshKey, onCompared }) {
           )}
           {!enough && builds.length >= 2 && (
             <p style={{ color: T.parchmentDim, fontSize: "0.75rem", margin: 0 }}>
-              Pick at least two (up to five).
+              {selectedIds.length === 1
+                ? "Pick one more to compare against."
+                : "Pick at least two (up to five)."}
             </p>
           )}
         </div>

@@ -195,3 +195,42 @@ def test_key_terms_skip_what_the_plan_says_to_skip():
 """
     terms = summarize.key_techs_and_wonders(plan)
     assert terms == ["Writing", "Currency", "Education"]
+
+
+def test_campaign_journal_round_trips(client, sample_config, stub_llm):
+    build = _generate(client, sample_config)
+    assert build["notes"] == ""
+
+    notes = "Turn 40: forward-settled by Rome. Going Encampment before Campus."
+    updated = client.patch(f"/api/builds/{build['id']}", json={"notes": notes})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["notes"] == notes
+    # Title survives a notes-only edit.
+    assert updated.json()["title"] == build["title"]
+
+    assert client.get(f"/api/builds/{build['id']}").json()["notes"] == notes
+
+
+def test_notes_can_be_cleared_and_renaming_leaves_them_alone(
+    client, sample_config, stub_llm
+):
+    build = _generate(client, sample_config)
+    client.patch(f"/api/builds/{build['id']}", json={"notes": "some notes"})
+
+    renamed = client.patch(f"/api/builds/{build['id']}", json={"title": "New name"})
+    assert renamed.json()["title"] == "New name"
+    assert renamed.json()["notes"] == "some notes"
+
+    cleared = client.patch(f"/api/builds/{build['id']}", json={"notes": ""})
+    assert cleared.json()["notes"] == ""
+
+
+def test_an_empty_patch_is_harmless(client, sample_config, stub_llm):
+    build = _generate(client, sample_config)
+    response = client.patch(f"/api/builds/{build['id']}", json={})
+    assert response.status_code == 200
+    assert response.json()["title"] == build["title"]
+
+
+def test_patching_a_missing_build_is_404(client):
+    assert client.patch("/api/builds/9999", json={"notes": "x"}).status_code == 404

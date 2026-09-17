@@ -218,7 +218,14 @@ backend/   FastAPI — serves the API and those static files on one port
 The three tabs map to three endpoints: `POST /api/generate` (generate + auto-save),
 `GET /api/builds` (archive, with search and filters), and `POST /api/compare` (the
 side-by-side table plus a compare-and-contrast writeup from a second prompt).
-`GET /api/usage` reports what all of it has cost.
+`GET /api/usage` reports what all of it has cost, and `PATCH /api/builds/{id}` renames a
+build or edits its campaign journal.
+
+Smaller things worth knowing: **🎲 Surprise me** rolls a civ and all three style
+dropdowns (never "No preference" — a randomiser that shrugs isn't a surprise),
+**Compare with…** in the archive jumps to the Compare tab with that build already
+ticked, and every saved build has a **campaign journal** for notes as the game actually
+plays out.
 
 ## Development
 
@@ -232,7 +239,11 @@ pytest                             # backend tests (no API key needed — the LL
 
 Issues and PRs welcome. The feature backlog in `civ6-app-brief.md` is priority-ordered
 if you're looking for somewhere to start — outcome tracking (win/loss, victory type,
-turn count, and a stats view) is the next thing worth building.
+turn count, and a stats view) is the next thing worth building, and it's what turns the
+archive from a record into a feedback loop.
+
+One gap worth naming: there are no JavaScript tests. The backend has 95; the markdown
+renderer is verified by hand in a browser.
 
 If you change how the coach talks, change the prompts in `civ6-app-brief.md` and
 `backend/prompts.py` together — they're meant to stay identical.

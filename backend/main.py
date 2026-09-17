@@ -54,16 +54,30 @@ class GenerateRequest(BaseModel):
         return value
 
 
-class TitleUpdate(BaseModel):
-    title: str
+class BuildUpdate(BaseModel):
+    """Either field may be omitted; whatever is sent is what changes."""
+
+    title: str | None = None
+    notes: str | None = None
 
     @field_validator("title")
     @classmethod
-    def clean_title(cls, value: str) -> str:
+    def clean_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         value = value.strip()
         if not value:
             raise ValueError("title cannot be empty")
         return value[:200]
+
+    @field_validator("notes")
+    @classmethod
+    def cap_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if len(value) > 20000:
+            raise ValueError("notes are too long (20000 character limit)")
+        return value
 
 
 class CompareRequest(BaseModel):
@@ -213,10 +227,13 @@ def get_build(build_id: int) -> dict[str, Any]:
 
 
 @app.patch("/api/builds/{build_id}", dependencies=[Depends(require_auth)])
-def rename_build(build_id: int, payload: TitleUpdate) -> dict[str, Any]:
-    build = db.update_title(build_id, payload.title)
-    if build is None:
+def update_build(build_id: int, payload: BuildUpdate) -> dict[str, Any]:
+    """Rename a build and/or edit its campaign journal."""
+    if db.get_build(build_id) is None:
         raise HTTPException(status_code=404, detail="No build with that id")
+    build = db.update_build(build_id, title=payload.title, notes=payload.notes)
+    build["usage"] = db.usage_for_build(build_id)
+    build["unverified_names"] = facts.unverified_names(build["generated_plan"])
     return build
 
 

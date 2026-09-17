@@ -14,7 +14,7 @@ def test_migrate_creates_the_schema_and_stamps_the_version():
     assert columns == {
         "id", "created_at", "title", "ruleset", "difficulty", "map_type",
         "config_json", "civ", "city_philosophy", "primary_focus", "posture",
-        "playstyle_text", "generated_plan",
+        "playstyle_text", "generated_plan", "notes",
     }
 
 
@@ -144,3 +144,40 @@ def test_a_v2_database_gains_the_cache_columns_without_losing_calls():
     assert totals["calls"] == 1
     assert totals["cost_usd"] == 0.01
     assert totals["cache_read_tokens"] == 0
+
+
+def test_a_v3_database_gains_notes_without_losing_builds():
+    """The campaign journal arriving for someone who already has an archive."""
+    conn = db.connect()
+    with conn:
+        conn.executescript(db.SCHEMA_V1)
+        conn.executescript(db.SCHEMA_V2)
+        conn.executescript(db.SCHEMA_V3)
+        conn.execute("PRAGMA user_version = 3")
+    saved = db.insert_build(
+        title="Korea — Science", config_dict={}, civ="Korea", city_philosophy="Tall",
+        primary_focus="Science", posture="", playstyle_text="tech",
+        generated_plan="## Civ & Leader\n**Korea**",
+    )
+
+    assert db.migrate() == db.CURRENT_VERSION
+
+    build = db.get_build(saved["id"])
+    assert build["title"] == "Korea — Science"
+    assert build["notes"] == ""          # new column, sensible default
+
+
+def test_title_and_notes_update_independently():
+    db.migrate()
+    build = db.insert_build(
+        title="Original", config_dict={}, civ="", city_philosophy="", primary_focus="",
+        posture="", playstyle_text="", generated_plan="plan",
+    )
+
+    only_notes = db.update_build(build["id"], notes="Turn 40: forward-settled by Rome")
+    assert only_notes["notes"] == "Turn 40: forward-settled by Rome"
+    assert only_notes["title"] == "Original"      # untouched
+
+    only_title = db.update_build(build["id"], title="Renamed")
+    assert only_title["title"] == "Renamed"
+    assert only_title["notes"] == "Turn 40: forward-settled by Rome"   # untouched

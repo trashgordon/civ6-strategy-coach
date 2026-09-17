@@ -51,6 +51,8 @@ export const api = {
   build: (id) => request(`/builds/${id}`),
   rename: (id, title) =>
     request(`/builds/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+  saveNotes: (id, notes) =>
+    request(`/builds/${id}`, { method: "PATCH", body: JSON.stringify({ notes }) }),
   remove: (id) => request(`/builds/${id}`, { method: "DELETE" }),
 
   usage: () => request("/usage"),

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api } from "../api";
 import {
   CITY_PHILOSOPHIES, CIVS, DEFAULT_CONFIG, MODES, NO_PREFERENCE,
-  POSTURES, PRIMARY_FOCUSES, SETUP_FIELDS,
+  POSTURES, PRIMARY_FOCUSES, SETUP_FIELDS, randomBuildStyle,
 } from "../data";
 import { Markdown } from "../markdown";
 import { SERIF, T } from "../theme";
@@ -24,6 +24,14 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [build, setBuild] = useState(null);
+
+  function surpriseMe() {
+    const roll = randomBuildStyle();
+    setCiv(roll.civ);
+    setCityPhilosophy(roll.cityPhilosophy);
+    setPrimaryFocus(roll.primaryFocus);
+    setPosture(roll.posture);
+  }
 
   function updateConfig(key, value) {
     setConfig((c) => ({ ...c, [key]: value }));
@@ -123,7 +131,18 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-        <Panel title="The build you're after">
+        <Panel
+          title="The build you're after"
+          right={
+            <Button
+              variant="ghost"
+              onClick={surpriseMe}
+              style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}
+            >
+              🎲 Surprise me
+            </Button>
+          }
+        >
           <FieldRow label="Civilization">
             <Select
               ariaLabel="Civilization"

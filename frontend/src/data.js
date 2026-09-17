@@ -76,3 +76,20 @@ export const SETUP_FIELDS = [
   { key: "rainfall", label: "Rainfall", options: ["Arid", "Standard", "Wet"] },
   { key: "seaLevel", label: "Sea level", options: ["Low", "Standard", "High"] },
 ];
+
+
+// "Surprise me" picks a definite build, so No preference is deliberately excluded —
+// a randomiser that shrugs isn't a surprise.
+function pick(options) {
+  const real = options.filter((o) => o !== NO_PREFERENCE);
+  return real[Math.floor(Math.random() * real.length)];
+}
+
+export function randomBuildStyle() {
+  return {
+    civ: pick(CIVS),
+    cityPhilosophy: pick(CITY_PHILOSOPHIES),
+    primaryFocus: pick(PRIMARY_FOCUSES),
+    posture: pick(POSTURES),
+  };
+}

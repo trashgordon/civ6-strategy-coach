@@ -55,6 +55,9 @@ export default function App() {
   // Bumped whenever a build is saved or deleted, so the other tabs refetch.
   const [refreshKey, setRefreshKey] = useState(0);
   const [focusBuildId, setFocusBuildId] = useState(null);
+  // Set by "Compare with…" in the archive, so the Compare tab opens with that build
+  // already ticked instead of making you find it again.
+  const [compareSeedId, setCompareSeedId] = useState(null);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -92,6 +95,11 @@ export default function App() {
   function openInArchive(buildId) {
     setFocusBuildId(buildId);
     setTab("archive");
+  }
+
+  function compareWith(buildId) {
+    setCompareSeedId(buildId);
+    setTab("compare");
   }
 
   return (
@@ -206,11 +214,14 @@ export default function App() {
             refreshKey={refreshKey}
             focusBuildId={focusBuildId}
             onFocusConsumed={() => setFocusBuildId(null)}
+            onCompareWith={compareWith}
           />
         )}
         {tab === "compare" && (
           <Compare
             refreshKey={refreshKey}
+            seedBuildId={compareSeedId}
+            onSeedConsumed={() => setCompareSeedId(null)}
             onCompared={() => setRefreshKey((k) => k + 1)}
           />
         )}

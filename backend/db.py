@@ -58,11 +58,17 @@ ALTER TABLE api_calls ADD COLUMN cache_write_tokens INTEGER;
 ALTER TABLE api_calls ADD COLUMN cache_read_tokens INTEGER;
 """
 
+# The campaign journal: free text the player edits as the game actually plays out.
+SCHEMA_V4 = """
+ALTER TABLE saved_builds ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+"""
+
 # version -> SQL to reach that version. Append only.
 MIGRATIONS: list[tuple[int, str]] = [
     (1, SCHEMA_V1),
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
+    (4, SCHEMA_V4),
 ]
 
 CURRENT_VERSION = MIGRATIONS[-1][0]
@@ -122,6 +128,7 @@ def _row_to_build(row: sqlite3.Row, include_plan: bool = True) -> dict[str, Any]
         "primary_focus": row["primary_focus"],
         "posture": row["posture"],
         "playstyle_text": row["playstyle_text"],
+        "notes": row["notes"] if "notes" in row.keys() else "",
     }
     if include_plan:
         build["generated_plan"] = row["generated_plan"]
@@ -220,11 +227,32 @@ def get_builds(build_ids: Iterable[int]) -> list[dict[str, Any]]:
     return [by_id[i] for i in ids if i in by_id]
 
 
-def update_title(build_id: int, title: str) -> dict[str, Any] | None:
+def update_build(
+    build_id: int, *, title: str | None = None, notes: str | None = None
+) -> dict[str, Any] | None:
+    """Update whichever of title/notes was supplied. Both left alone when None."""
+    assignments: list[str] = []
+    params: list[Any] = []
+    if title is not None:
+        assignments.append("title = ?")
+        params.append(title)
+    if notes is not None:
+        assignments.append("notes = ?")
+        params.append(notes)
+    if not assignments:
+        return get_build(build_id)
+
+    params.append(build_id)
     conn = connect()
     with conn:
-        conn.execute("UPDATE saved_builds SET title = ? WHERE id = ?", (title, build_id))
+        conn.execute(
+            f"UPDATE saved_builds SET {', '.join(assignments)} WHERE id = ?", params
+        )
     return get_build(build_id)
+
+
+def update_title(build_id: int, title: str) -> dict[str, Any] | None:
+    return update_build(build_id, title=title)
 
 
 def delete_build(build_id: int) -> bool:

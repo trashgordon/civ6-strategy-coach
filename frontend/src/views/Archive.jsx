@@ -47,7 +47,7 @@ function BuildRow({ build, active, onSelect }) {
   );
 }
 
-export default function Archive({ focusBuildId, onFocusConsumed, refreshKey }) {
+export default function Archive({ focusBuildId, onFocusConsumed, refreshKey, onCompareWith }) {
   const [builds, setBuilds] = useState([]);
   const [filters, setFilters] = useState({ civs: [], focuses: [] });
   const [query, setQuery] = useState("");
@@ -62,6 +62,11 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey }) {
 
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
+  // Campaign journal: edited as the game actually plays out, so it saves explicitly
+  // rather than on every keystroke.
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [draftNotes, setDraftNotes] = useState("");
+  const [notesSaved, setNotesSaved] = useState(false);
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -102,6 +107,9 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey }) {
         if (cancelled) return;
         setSelected(build);
         setDraftTitle(build.title);
+        setDraftNotes(build.notes || "");
+        setNotesOpen(Boolean(build.notes));
+        setNotesSaved(false);
         setDetailError(null);
       })
       .catch((e) => {
@@ -124,6 +132,18 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey }) {
       loadList();
     } catch (e) {
       setDetailError(e.message || "Couldn't rename that build.");
+    }
+  }
+
+  async function saveNotes() {
+    if (!selected) return;
+    try {
+      const updated = await api.saveNotes(selected.id, draftNotes);
+      setSelected(updated);
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2000);
+    } catch (e) {
+      setDetailError(e.message || "Couldn't save those notes.");
     }
   }
 
@@ -280,7 +300,19 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey }) {
                 )}
 
                 {!renaming && (
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <Button
+                      variant="ghost"
+                      onClick={() => onCompareWith?.(selected.id)}
+                    >
+                      Compare with…
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setNotesOpen((open) => !open)}
+                    >
+                      {notesOpen ? "Hide notes" : selected.notes ? "Notes" : "Add notes"}
+                    </Button>
                     <Button variant="ghost" onClick={() => setRenaming(true)}>
                       Rename
                     </Button>
@@ -334,6 +366,58 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey }) {
                 </p>
               )}
             </header>
+
+            {notesOpen && (
+              <div
+                style={{
+                  margin: "1rem 0 1.25rem",
+                  padding: "0.9rem",
+                  background: T.panelAlt,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: "3px",
+                }}
+              >
+                <label
+                  htmlFor="campaign-notes"
+                  style={{
+                    display: "block", fontFamily: SERIF, color: T.brass,
+                    fontSize: "0.95rem", marginBottom: "0.4rem",
+                  }}
+                >
+                  Campaign journal
+                </label>
+                <textarea
+                  id="campaign-notes"
+                  value={draftNotes}
+                  maxLength={20000}
+                  onChange={(e) => setDraftNotes(e.target.value)}
+                  placeholder="How it's actually going. e.g. 'Turn 40: forward-settled by Rome, going Encampment before Campus.'"
+                  style={{
+                    width: "100%", minHeight: "6rem", background: T.panel,
+                    color: T.parchment, border: `1px solid ${T.border}`,
+                    borderRadius: "3px", padding: "0.6rem", fontSize: "0.85rem",
+                    resize: "vertical", lineHeight: 1.6,
+                  }}
+                />
+                <div
+                  style={{
+                    display: "flex", alignItems: "center",
+                    gap: "0.6rem", marginTop: "0.5rem",
+                  }}
+                >
+                  <Button
+                    variant="solid"
+                    onClick={saveNotes}
+                    disabled={draftNotes === (selected.notes || "")}
+                  >
+                    Save notes
+                  </Button>
+                  {notesSaved && (
+                    <span style={{ color: T.brass, fontSize: "0.78rem" }}>Saved</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div style={{ maxWidth: "44rem" }}>
               <UnverifiedNames names={selected.unverified_names} />
