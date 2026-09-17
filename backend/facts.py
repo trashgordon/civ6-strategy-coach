@@ -17,6 +17,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from .extract_gamedata import facts_dir
+from .gamedata import CIVS
 
 # Injected into the prompt. Chosen for the sections the coach actually writes, and
 # trimmed because every name costs input tokens on every generation.
@@ -75,6 +76,7 @@ def reload() -> None:
     """Forget the cache — used by tests and after re-running the extractor."""
     _load.cache_clear()
     _known_names.cache_clear()
+    _proper_nouns.cache_clear()
 
 
 def available() -> bool:
@@ -152,6 +154,43 @@ def prompt_block(max_names_per_category: int = 400) -> str:
     return "\n".join(lines).strip()
 
 
+# People and places get written loosely: "Kupe of Maori", "Kongo's Mvemba", "Eleanor of
+# Aquitaine" when the data disambiguates it as "Eleanor of Aquitaine (England)". Matching
+# these by containment rather than equality is safe, because it can only ever suppress a
+# flag that was already raised.
+_PEOPLE_AND_PLACES = ("leaders", "civilizations", "great_people")
+_MIN_CONTAINMENT = 4  # "Ur" would otherwise match almost anything
+
+
+@lru_cache(maxsize=1)
+def _proper_nouns() -> tuple[str, ...]:
+    data = _load()
+    names = {c.lower() for c in CIVS}
+    for category in _PEOPLE_AND_PLACES:
+        names.update(v.lower() for v in data.get(category, ()))
+    return tuple(n for n in names if len(n) >= _MIN_CONTAINMENT)
+
+
+def _names_a_real_person_or_place(term: str) -> bool:
+    """True when `term` overlaps a known leader, civ or Great Person either way round."""
+    lowered = re.sub(r"[^a-z0-9 ]", " ", term.lower())
+    lowered = re.sub(r"\s+", " ", lowered).strip()
+    if not lowered:
+        return False
+    for known in _proper_nouns():
+        if known in lowered or lowered in known:
+            return True
+    return False
+
+
+# The recommendation section is prose about a pick — it names rival civs and leaders in
+# passing, which isn't the kind of assertion worth checking. Fabricated card and
+# dedication names, the actual failure mode, live in the sections after it.
+_CIV_LEADER_SECTION = re.compile(
+    r"^##\s*Civ\s*&\s*Leader.*?(?=^##|\Z)", re.MULTILINE | re.DOTALL
+)
+
+
 # The coach's own emphasis is the signal for "this is a name I'm asserting".
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _CHAIN = re.compile(r"\s*(?:→|->|➜|»|/)\s*")
@@ -187,19 +226,55 @@ def unverified_names(plan: str) -> list[str]:
     flagged: list[str] = []
     seen: set[str] = set()
 
-    for bold in _BOLD.findall(plan):
+    scanned = _CIV_LEADER_SECTION.sub("", plan)
+    for bold in _BOLD.findall(scanned):
         for piece in _CHAIN.split(bold):
-            term = piece.strip(" .,;:—–-*()").strip()
-            if not term or not _looks_like_an_entity(term):
-                continue
-            key = term.lower()
-            if _variants(term) & known:
-                continue
-            # A number or a bare era reference isn't a claim about a game entity.
-            if any(ch.isdigit() for ch in term):
-                continue
-            if key in seen:
-                continue
-            seen.add(key)
-            flagged.append(term)
+            for term in _checkable_terms(piece, known):
+                key = term.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                flagged.append(term)
     return flagged
+
+
+def _recognised(term: str, known: frozenset[str]) -> bool:
+    if _variants(term) & known:
+        return True
+    # A number or a bare era reference isn't a claim about a game entity.
+    if any(ch.isdigit() for ch in term):
+        return True
+    return _names_a_real_person_or_place(term)
+
+
+def _checkable_terms(piece: str, known: frozenset[str]) -> list[str]:
+    """The terms in one bolded run that are genuinely unrecognised.
+
+    A run is tried whole first, so "Pen, Brush, and Voice" matches as the single name it
+    is. Only if that fails is it treated as a comma-separated list — "Irrigation, Mining,
+    Bronze Working" is three techs — and each item checked on its own. That way a
+    fabrication hiding inside a list is still caught, without splitting real names apart.
+    """
+    term = piece.strip(" .,;:—–-*()").strip()
+    if not term:
+        return []
+
+    if _looks_like_an_entity(term):
+        if _recognised(term, known):
+            return []
+        if "," not in term:
+            return [term]
+    elif "," not in term:
+        return []
+
+    parts = []
+    for raw in term.split(","):
+        item = re.sub(r"^\s*and\s+", "", raw.strip(), flags=re.IGNORECASE)
+        item = item.strip(" .;:—–-*()")
+        if item:
+            parts.append(item)
+    if len(parts) < 2 or not all(_looks_like_an_entity(p) for p in parts):
+        # Not a list of names after all — report the whole run if it looked like one.
+        return [term] if _looks_like_an_entity(term) else []
+
+    return [p for p in parts if not _recognised(p, known)]

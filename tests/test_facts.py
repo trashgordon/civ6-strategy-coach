@@ -115,3 +115,68 @@ def test_each_name_is_reported_once(installed_facts):
 def test_arrow_chains_are_checked_term_by_term(installed_facts):
     plan = "**Bronze Working → Fakeium → Writing**"
     assert facts.unverified_names(plan) == ["Fakeium"]
+
+
+# ------------------------------------------------- loose phrasing, not fabrication
+
+
+@pytest.fixture
+def people_facts(installed_facts):
+    """Leaders as the game disambiguates them, plus a civ."""
+    (installed_facts / "leaders.json").write_text(
+        json.dumps(["Eleanor of Aquitaine (England)", "Kupe", "Mvemba a Nzinga"])
+    )
+    (installed_facts / "civilizations.json").write_text(json.dumps(["Kongo"]))
+    facts.reload()
+    return installed_facts
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "Eleanor of Aquitaine",   # data disambiguates it with "(England)"
+        "Kupe of Maori",          # leader-of-civ phrasing
+        "Kongo's Mvemba",         # possessive
+    ],
+)
+def test_loose_leader_phrasing_is_not_a_fabrication(people_facts, written):
+    """All three were flagged on a real plan and are just how people write names."""
+    assert facts.unverified_names(f"## Tech Path\n**{written}**") == []
+
+
+def test_the_civ_and_leader_section_is_not_checked(installed_facts):
+    """That section is prose about a recommendation, not a list of game entities."""
+    plan = """## Civ & Leader
+**Some Made Up Civ** is the pick here.
+
+## Tech Path
+- **Bronze Working** first
+"""
+    assert facts.unverified_names(plan) == []
+
+
+def test_a_fabrication_after_that_section_is_still_caught(installed_facts):
+    plan = """## Civ & Leader
+**Korea** is the pick.
+
+## Golden Age Dedications
+- **Exodus of the Evenkind**
+"""
+    assert facts.unverified_names(plan) == ["Exodus of the Evenkind"]
+
+
+# ------------------------------------------------------------- comma-separated runs
+
+
+def test_a_name_containing_commas_is_not_split(installed_facts):
+    assert facts.unverified_names("## Tech\n**Pen, Brush, and Voice**") == []
+
+
+def test_a_comma_list_of_real_names_is_clean(installed_facts):
+    plan = "## Tech Path\n**Bronze Working, Writing**\n"
+    assert facts.unverified_names(plan) == []
+
+
+def test_a_fabrication_inside_a_comma_list_is_caught(installed_facts):
+    plan = "## Tech Path\n**Bronze Working, Fakeium, Writing**\n"
+    assert facts.unverified_names(plan) == ["Fakeium"]
