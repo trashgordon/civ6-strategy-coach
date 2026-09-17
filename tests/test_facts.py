@@ -23,6 +23,28 @@ def installed_facts(tmp_path, monkeypatch):
     (directory / "dedications.json").write_text(
         json.dumps(["Exodus of the Evangelists", "Monumentality", "Pen, Brush, and Voice"])
     )
+    # Dedications are injected from here, with their per-age bonuses; the flat list
+    # above is what name validation checks against.
+    (directory / "dedication_bonuses.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Exodus of the Evangelists",
+                    "eras": "Classical–Renaissance",
+                    "golden": "+2 Movement for all Missionaries, Apostles and Inquisitors.",
+                    "normal": "Gain +2 Era Score each time you convert a city.",
+                    "dark": "Gain +2 Era Score each time you convert a city.",
+                },
+                {
+                    "name": "Monumentality",
+                    "eras": "Classical–Renaissance",
+                    "golden": "+2 Movement for all Builders. May purchase civilian units with Faith.",
+                    "normal": "Gain +1 Era Score for each new specialty district.",
+                    "dark": "Gain +1 Era Score for each new specialty district.",
+                },
+            ]
+        )
+    )
     (directory / "eras.json").write_text(json.dumps(["Classical Era", "Medieval Era"]))
     (directory / "units.json").write_text(json.dumps(["Great Scientist"]))
     (directory / "governments.json").write_text(json.dumps(["Monarchy"]))
@@ -355,3 +377,23 @@ def test_effects_do_not_leak_into_name_validation(effect_facts):
     """effects.json is a mapping; the name loader must skip it, not choke on it."""
     assert "effects" not in facts.summary()
     assert facts.unverified_names("**Corvée**") == []
+
+
+def test_dedications_carry_their_per_age_bonuses(installed_facts):
+    """A dedication is picked at every era change, not only for a Golden Age."""
+    block = facts.prompt_block()
+    assert "You pick one at every era change" in block
+    assert "- Monumentality (Classical–Renaissance)" in block
+    assert "golden age: +2 Movement for all Builders" in block
+    assert "normal or dark age: Gain +1 Era Score for each new specialty district." in block
+
+
+def test_dedication_names_still_validate(installed_facts):
+    """Injection moved to dedication_bonuses.json; validation must not regress."""
+    assert facts.unverified_names("**Monumentality**") == []
+    assert facts.unverified_names("**Exodus of the Evangelists**") == []
+    assert facts.unverified_names("**Exodus of the Evenkind**") == ["Exodus of the Evenkind"]
+
+
+def test_dedication_bonuses_are_counted_in_meta(installed_facts):
+    assert facts.summary()["dedication_bonuses"] == 2

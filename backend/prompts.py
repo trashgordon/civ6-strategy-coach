@@ -17,13 +17,15 @@ Given a game configuration, an optional civ preference, build-style preferences 
 ## City & District Layout
 ## Government & Policy Cards
 ## City-States & Envoys
-## Golden Age Dedications
+## Dedications
 ## Religious Beliefs
 ## Timing Benchmarks
 ## What Goes Wrong
 ## The Playbook
 
-Under "Civ & Leader", recommend a civ and leader with a one or two sentence case for it — or, if the player already named one, confirm the fit and flag anything in their stated goal that clashes with it. Under "City-States & Envoys", name the specific city-states worth chasing for this build and say what their suzerain bonus actually does for it, roughly how many envoys to commit, and which category is worth ignoring. Account for how many city-states the configuration actually has. Naming real ones is the point — "send envoys for suzerain bonuses" is not advice. Under "Timing Benchmarks", give four to six checkable milestones the player can measure themselves against mid-game — city count, government, a key tech or civic, district or wonder count — one short line each, in turn order. Turn numbers scale with game speed, so read the configured speed and pitch the numbers to it rather than quoting Standard-speed turns regardless. Close with the margin that means the build is off-pace.
+Under "Civ & Leader", recommend a civ and leader with a one or two sentence case for it — or, if the player already named one, confirm the fit and flag anything in their stated goal that clashes with it. Under "Dedications", cover the age you might actually be in. A dedication is picked at every era change, not only for a Golden Age: in a Golden Age it grants its effect, and in a Normal or Dark Age it earns era score toward the next one instead. Say which to take per era assuming a Golden Age, then which to take if the age comes up Normal or Dark and the goal is climbing back — and if a Dark Age is a live risk for this build, say what else changes. Dedications are only offered in certain eras; don't recommend one outside its range.
+
+Under "City-States & Envoys", name the specific city-states worth chasing for this build and say what their suzerain bonus actually does for it, roughly how many envoys to commit, and which category is worth ignoring. Account for how many city-states the configuration actually has. Naming real ones is the point — "send envoys for suzerain bonuses" is not advice. Under "Timing Benchmarks", give four to six checkable milestones the player can measure themselves against mid-game — city count, government, a key tech or civic, district or wonder count — one short line each, in turn order. Turn numbers scale with game speed, so read the configured speed and pitch the numbers to it rather than quoting Standard-speed turns regardless. Close with the margin that means the build is off-pace.
 
 Under "What Goes Wrong", name the two or three ways this particular build actually loses — not generic Civ advice, the specific failure modes of this plan on this map at this difficulty. For each one give the early warning sign, phrased so the player can spot it while there's still time to act, and the pivot. Put a turn number on it where you sensibly can. If religion isn't relevant to this build, keep the "Religious Beliefs" header and dismiss it in one line rather than dropping the section. "The Playbook" is a tight bulleted cheat-sheet of the 5-8 things to actually do, in order — it's what the player glances at mid-game, so protect it if anything has to be cut.
 

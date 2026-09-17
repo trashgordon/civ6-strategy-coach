@@ -37,6 +37,7 @@ _LOC_ROW = re.compile(
 )
 _XML_ROW = re.compile(r"<Row\s+([^>]*?)/?>", re.DOTALL)
 # <Row Type="CIVILIZATION_KUMASI" Name="CityStateCategory" Value="CULTURAL"/>
+_COMMEMORATION_ROW = re.compile(r'<Row CommemorationType="([A-Z_]+)"([^>]*)/>')
 _CITY_STATE_CATEGORY = re.compile(
     r'<Row\s+Type="(CIVILIZATION_[A-Z_]+)"\s+Name="CityStateCategory"\s+Value="([A-Z]+)"'
 )
@@ -52,9 +53,12 @@ _ATTR = re.compile(r'(\w+)="([^"]*)"')
 # settlers" when Corvée is +15% production toward ancient and classical wonders).
 # A tuple, not a set: two tables can define rows that resolve to the same display
 # name, so iteration order decides which effect wins and must be deterministic.
+# Buildings and Improvements were dropped deliberately: ~5,300 cached tokens for
+# effects the coach rarely reasons about, where policy cards and civ abilities are
+# where the misattributions actually happened. Governor promotions stay.
 _WITH_EFFECTS = (
     "Policies", "Beliefs", "Civics", "Technologies", "Governments", "Districts",
-    "Buildings", "Improvements", "Governors", "GovernorPromotions",
+    "Governors", "GovernorPromotions",
 )
 
 _TABLES = [
@@ -210,6 +214,60 @@ def _clean_text(value: str) -> str:
     return re.sub(r"\b(\w+) \1\b", r"\1", value, flags=re.IGNORECASE)
 
 
+def _dedications(assets: Path, strings: dict[str, set[str]]) -> list[dict[str, str]]:
+    """Dedications with the era they're available in and all three age bonuses.
+
+    A dedication isn't a Golden Age feature — you pick one at every era change. In a
+    Golden Age it gives the strong effect; in a Normal or Dark Age it instead earns era
+    score toward the next one. Advice that only covers the Golden case is advice for a
+    third of the situations.
+    """
+    rows: dict[str, dict[str, str]] = {}
+    for path in assets.rglob("*.xml"):
+        if "Text" in path.parts:
+            continue
+        try:
+            content = path.read_text(errors="ignore")
+        except OSError:
+            continue
+        for ctype, rest in _COMMEMORATION_ROW.findall(content):
+            attrs = dict(_ATTR.findall(rest))
+            if "CategoryDescription" in attrs:
+                rows.setdefault(ctype, attrs)
+
+    def text(key: str, name: str) -> str:
+        values = strings.get(key or "", set())
+        if not values:
+            return ""
+        cleaned = _clean_text(sorted(values, key=len)[-1])
+        # Strip the "<Name> Golden Age:" / "<Name> Dedication Bonus:" prefix.
+        return re.sub(
+            rf"^{re.escape(name)}\s*(?:Golden Age|Dedication Bonus)\s*:\s*",
+            "", cleaned,
+        ).strip()
+
+    def era(value: str) -> str:
+        return (value or "").replace("ERA_", "").replace("_", " ").title()
+
+    out = []
+    for attrs in rows.values():
+        name = _clean(
+            sorted(strings.get(attrs["CategoryDescription"], {""}))[0]
+        )
+        if not name:
+            continue
+        entry = {
+            "name": name,
+            "eras": f"{era(attrs.get('MinimumGameEra'))}–{era(attrs.get('MaximumGameEra'))}".strip("–"),
+            "golden": text(attrs.get("GoldenAgeBonusDescription", ""), name),
+            "normal": text(attrs.get("NormalAgeBonusDescription", ""), name),
+            "dark": text(attrs.get("DarkAgeBonusDescription", ""), name),
+        }
+        if entry["golden"] or entry["normal"]:
+            out.append(entry)
+    return sorted(out, key=lambda e: e["name"])
+
+
 def _city_states(assets: Path, strings: dict[str, set[str]]) -> list[dict[str, str]]:
     """Every city-state with its category and suzerain bonus.
 
@@ -293,6 +351,7 @@ def extract() -> dict[str, list]:
         facts[out_name] = sorted(v for v in harvested if v)
 
     facts["city_states"] = _city_states(assets, strings)
+    facts["dedication_bonuses"] = _dedications(assets, strings)
     facts["effects"] = _effects(rows, strings)
 
     # Golden Age dedications are the commemoration categories, named via LOC_MOMENT_*.
@@ -335,6 +394,8 @@ def main() -> int:
             note = " (with suzerain bonuses)"
         elif name == "effects":
             note = " (what things actually do)"
+        elif name == "dedication_bonuses":
+            note = " (golden / normal / dark age)"
         print(f"  {name:22} {len(values):>5}{note}")
     print(f"\n  {'TOTAL':22} {total:>5} names -> {out}")
     return 0

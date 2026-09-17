@@ -23,7 +23,7 @@ from .gamedata import CIVS
 # Injected into the prompt. Chosen for the sections the coach actually writes, and
 # trimmed because every name costs input tokens on every generation.
 INJECT_CATEGORIES = (
-    ("dedications", "Golden Age dedications"),
+    # "dedications" is injected separately, with its per-age bonuses.
     ("governments", "Governments"),
     ("governors", "Governors"),
     ("technologies", "Technologies"),
@@ -40,6 +40,9 @@ _VALIDATE_ONLY = (
     "buildings", "improvements", "units", "resources", "civilizations", "leaders",
     "eras", "yields", "great_people", "projects", "features", "terrains",
     "governor_promotions", "religions", "abilities", "belief_classes",
+    # Injected separately with their per-age bonuses, but the plain name list is still
+    # what validation checks against.
+    "dedications",
 )
 
 # Vocabulary the coach bolds that is real language but not a game entity to look up.
@@ -82,6 +85,19 @@ def effects() -> dict[str, str]:
     except (OSError, json.JSONDecodeError):
         return {}
     return loaded if isinstance(loaded, dict) else {}
+
+
+@lru_cache(maxsize=1)
+def dedication_bonuses() -> tuple[dict[str, str], ...]:
+    """Dedications with their era range and all three age bonuses."""
+    path = facts_dir() / "dedication_bonuses.json"
+    if not path.is_file():
+        return ()
+    try:
+        entries = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return ()
+    return tuple(e for e in entries if isinstance(e, dict) and e.get("name"))
 
 
 @lru_cache(maxsize=1)
@@ -129,6 +145,7 @@ def reload() -> None:
     _proper_nouns.cache_clear()
     city_states.cache_clear()
     effects.cache_clear()
+    dedication_bonuses.cache_clear()
 
 
 def available() -> bool:
@@ -147,6 +164,9 @@ def summary() -> dict[str, int]:
         counts["city_states"] = len(states)
     else:
         counts.pop("city_states", None)
+    bonuses = dedication_bonuses()
+    if bonuses:
+        counts["dedication_bonuses"] = len(bonuses)
     return counts
 
 
@@ -204,6 +224,8 @@ def _known_names() -> frozenset[str]:
             names |= _variants(value)
     for civ in CIVS:
         names |= _variants(civ)
+    for entry in dedication_bonuses():
+        names |= _variants(entry["name"])
     for entry in city_states():
         names |= _variants(entry["name"])
         # "Ignore Militaristic city-states" — the category is vocabulary, not a name.
@@ -243,6 +265,22 @@ def prompt_block(max_names_per_category: int = 400) -> str:
         lines.append("Civ and leader abilities:")
         for name, effect in described:
             lines.append(f"- {name}: {effect}")
+        lines.append("")
+
+    dedications = dedication_bonuses()
+    if dedications:
+        lines.append(
+            "Dedications. You pick one at every era change, not only for a Golden Age: "
+            "in a Golden Age it gives the effect below, and in a Normal or Dark Age it "
+            "instead earns era score toward the next one. Each is only offered in the "
+            "eras shown."
+        )
+        for entry in dedications:
+            lines.append(f"- {entry['name']} ({entry.get('eras') or 'any era'})")
+            if entry.get("golden"):
+                lines.append(f"    golden age: {entry['golden']}")
+            if entry.get("normal"):
+                lines.append(f"    normal or dark age: {entry['normal']}")
         lines.append("")
 
     states = city_states()
