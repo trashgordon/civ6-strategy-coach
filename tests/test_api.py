@@ -234,3 +234,72 @@ def test_an_empty_patch_is_harmless(client, sample_config, stub_llm):
 
 def test_patching_a_missing_build_is_404(client):
     assert client.patch("/api/builds/9999", json={"notes": "x"}).status_code == 404
+
+
+def test_logging_an_outcome_round_trips(client, sample_config, stub_llm):
+    build = _generate(client, sample_config)
+    assert (build["outcome"], build["victory_type"], build["end_turn"]) == ("", "", None)
+
+    logged = client.patch(
+        f"/api/builds/{build['id']}",
+        json={"outcome": "won", "victory_type": "Science", "end_turn": 247},
+    )
+    assert logged.status_code == 200, logged.text
+    assert logged.json()["outcome"] == "won"
+    assert logged.json()["victory_type"] == "Science"
+    assert logged.json()["end_turn"] == 247
+    # And it survives a reload.
+    assert client.get(f"/api/builds/{build['id']}").json()["end_turn"] == 247
+
+
+def test_outcome_input_is_validated(client, sample_config, stub_llm):
+    build = _generate(client, sample_config)
+    url = f"/api/builds/{build['id']}"
+
+    assert client.patch(url, json={"outcome": "sort of won"}).status_code == 422
+    assert client.patch(url, json={"victory_type": "Vibes"}).status_code == 422
+    assert client.patch(url, json={"end_turn": -5}).status_code == 422
+    assert client.patch(url, json={"end_turn": 99999}).status_code == 422
+
+    # Case is forgiven, and the canonical spelling comes back.
+    assert client.patch(url, json={"outcome": "WON"}).json()["outcome"] == "won"
+    assert client.patch(
+        url, json={"victory_type": "science"}
+    ).json()["victory_type"] == "Science"
+
+
+def test_an_outcome_can_be_unrecorded_again(client, sample_config, stub_llm):
+    build = _generate(client, sample_config)
+    url = f"/api/builds/{build['id']}"
+    client.patch(url, json={"outcome": "lost", "end_turn": 120})
+
+    cleared = client.patch(url, json={"outcome": "", "end_turn": 0})
+    assert cleared.json()["outcome"] == ""
+    assert cleared.json()["end_turn"] is None
+
+
+def test_stats_endpoint_summarises_the_archive(client, sample_config, stub_llm):
+    empty = client.get("/api/stats").json()
+    assert empty["overall"]["builds"] == 0
+    assert empty["overall"]["win_rate"] is None
+    assert empty["outcomes"] == ["won", "lost", "abandoned"]
+    assert "Science" in empty["victory_types"]
+
+    first = _generate(client, sample_config, civ="Korea")
+    second = _generate(client, sample_config, civ="Korea")
+    third = _generate(client, sample_config, civ="Rome", primary_focus="Domination")
+    client.patch(f"/api/builds/{first['id']}",
+                 json={"outcome": "won", "victory_type": "Science", "end_turn": 240})
+    client.patch(f"/api/builds/{second['id']}", json={"outcome": "lost"})
+    client.patch(f"/api/builds/{third['id']}", json={"outcome": "won",
+                                                     "victory_type": "Domination"})
+
+    stats = client.get("/api/stats").json()
+    assert stats["overall"]["won"] == 2
+    assert stats["overall"]["lost"] == 1
+    assert stats["overall"]["unrecorded"] == 0
+
+    civs = {e["value"]: e for e in stats["by_dimension"]["civ"]["entries"]}
+    assert (civs["Korea"]["won"], civs["Korea"]["lost"]) == (1, 1)
+    assert civs["Rome"]["win_rate"] == 1.0
+    assert stats["mean_winning_turn"] == 240

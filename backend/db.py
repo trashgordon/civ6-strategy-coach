@@ -63,13 +63,25 @@ SCHEMA_V4 = """
 ALTER TABLE saved_builds ADD COLUMN notes TEXT NOT NULL DEFAULT '';
 """
 
+# How the game actually went. Empty outcome means "not recorded yet", which is
+# deliberately distinct from "abandoned" — most builds will never be logged.
+SCHEMA_V5 = """
+ALTER TABLE saved_builds ADD COLUMN outcome TEXT NOT NULL DEFAULT '';
+ALTER TABLE saved_builds ADD COLUMN victory_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE saved_builds ADD COLUMN end_turn INTEGER;
+"""
+
 # version -> SQL to reach that version. Append only.
 MIGRATIONS: list[tuple[int, str]] = [
     (1, SCHEMA_V1),
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
     (4, SCHEMA_V4),
+    (5, SCHEMA_V5),
 ]
+
+OUTCOMES = ("won", "lost", "abandoned")
+VICTORY_TYPES = ("Science", "Culture", "Domination", "Religious", "Diplomatic", "Score")
 
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
@@ -129,6 +141,9 @@ def _row_to_build(row: sqlite3.Row, include_plan: bool = True) -> dict[str, Any]
         "posture": row["posture"],
         "playstyle_text": row["playstyle_text"],
         "notes": row["notes"] if "notes" in row.keys() else "",
+        "outcome": row["outcome"] if "outcome" in row.keys() else "",
+        "victory_type": row["victory_type"] if "victory_type" in row.keys() else "",
+        "end_turn": row["end_turn"] if "end_turn" in row.keys() else None,
     }
     if include_plan:
         build["generated_plan"] = row["generated_plan"]
@@ -228,9 +243,20 @@ def get_builds(build_ids: Iterable[int]) -> list[dict[str, Any]]:
 
 
 def update_build(
-    build_id: int, *, title: str | None = None, notes: str | None = None
+    build_id: int,
+    *,
+    title: str | None = None,
+    notes: str | None = None,
+    outcome: str | None = None,
+    victory_type: str | None = None,
+    end_turn: int | None = None,
+    clear_end_turn: bool = False,
 ) -> dict[str, Any] | None:
-    """Update whichever of title/notes was supplied. Both left alone when None."""
+    """Update whichever fields were supplied. Anything left None is untouched.
+
+    `clear_end_turn` exists because None already means "don't touch" — without it there
+    would be no way to unset a turn count that was entered by mistake.
+    """
     assignments: list[str] = []
     params: list[Any] = []
     if title is not None:
@@ -239,6 +265,17 @@ def update_build(
     if notes is not None:
         assignments.append("notes = ?")
         params.append(notes)
+    if outcome is not None:
+        assignments.append("outcome = ?")
+        params.append(outcome)
+    if victory_type is not None:
+        assignments.append("victory_type = ?")
+        params.append(victory_type)
+    if clear_end_turn:
+        assignments.append("end_turn = NULL")
+    elif end_turn is not None:
+        assignments.append("end_turn = ?")
+        params.append(end_turn)
     if not assignments:
         return get_build(build_id)
 
@@ -388,3 +425,122 @@ def recent_api_calls(limit: int = 50) -> list[dict[str, Any]]:
         (limit,),
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+# ------------------------------------------------------------------- outcomes
+
+# Dimensions the stats view can break results down by. Keyed by the column, since
+# these are all plain columns on saved_builds.
+STAT_DIMENSIONS = (
+    ("civ", "Civ"),
+    ("primary_focus", "Focus"),
+    ("city_philosophy", "City philosophy"),
+    ("posture", "Posture"),
+    ("map_type", "Map"),
+    ("difficulty", "Difficulty"),
+)
+
+_UNSET = ("", "No preference")
+
+
+def _rate(won: int, lost: int) -> float | None:
+    """Win rate over decided games. None when nothing has been decided yet."""
+    decided = won + lost
+    return round(won / decided, 3) if decided else None
+
+
+def outcome_stats() -> dict[str, Any]:
+    """Win/loss records overall and broken down by each dimension.
+
+    Counts are reported alongside every rate on purpose: with a handful of games a
+    percentage on its own invites reading signal into a 1-0 record.
+    """
+    conn = connect()
+
+    totals = conn.execute(
+        """
+        SELECT
+            COUNT(*)                                                   AS builds,
+            SUM(CASE WHEN outcome = 'won' THEN 1 ELSE 0 END)           AS won,
+            SUM(CASE WHEN outcome = 'lost' THEN 1 ELSE 0 END)          AS lost,
+            SUM(CASE WHEN outcome = 'abandoned' THEN 1 ELSE 0 END)     AS abandoned,
+            SUM(CASE WHEN outcome = '' THEN 1 ELSE 0 END)              AS unrecorded
+        FROM saved_builds
+        """
+    ).fetchone()
+
+    overall = {
+        "builds": totals["builds"] or 0,
+        "won": totals["won"] or 0,
+        "lost": totals["lost"] or 0,
+        "abandoned": totals["abandoned"] or 0,
+        "unrecorded": totals["unrecorded"] or 0,
+    }
+    overall["win_rate"] = _rate(overall["won"], overall["lost"])
+
+    by_dimension: dict[str, Any] = {}
+    for column, label in STAT_DIMENSIONS:
+        rows = conn.execute(
+            f"""
+            SELECT {column} AS value,
+                   SUM(CASE WHEN outcome = 'won' THEN 1 ELSE 0 END)       AS won,
+                   SUM(CASE WHEN outcome = 'lost' THEN 1 ELSE 0 END)      AS lost,
+                   SUM(CASE WHEN outcome = 'abandoned' THEN 1 ELSE 0 END) AS abandoned,
+                   COUNT(*)                                               AS builds
+            FROM saved_builds
+            WHERE outcome != ''
+            GROUP BY {column}
+            """
+        ).fetchall()
+
+        entries = []
+        for row in rows:
+            value = (row["value"] or "").strip()
+            if value in _UNSET:
+                # "No preference" isn't a strategy, so it isn't a row worth ranking.
+                continue
+            if not (row["won"] or 0) and not (row["lost"] or 0):
+                # Only abandoned games under this value — nothing decided, so it says
+                # nothing about what wins.
+                continue
+            entries.append(
+                {
+                    "value": value,
+                    "won": row["won"] or 0,
+                    "lost": row["lost"] or 0,
+                    "abandoned": row["abandoned"] or 0,
+                    "builds": row["builds"] or 0,
+                    "win_rate": _rate(row["won"] or 0, row["lost"] or 0),
+                }
+            )
+        # Most decided games first, then by rate — a 3-1 outranks a lone 1-0.
+        entries.sort(
+            key=lambda e: (e["won"] + e["lost"], e["win_rate"] or 0), reverse=True
+        )
+        by_dimension[column] = {"label": label, "entries": entries}
+
+    victories = [
+        {"victory_type": row["victory_type"], "count": row["n"]}
+        for row in conn.execute(
+            """
+            SELECT victory_type, COUNT(*) AS n FROM saved_builds
+            WHERE outcome = 'won' AND victory_type != ''
+            GROUP BY victory_type ORDER BY n DESC
+            """
+        ).fetchall()
+    ]
+
+    turns = conn.execute(
+        """
+        SELECT AVG(end_turn) AS mean, MIN(end_turn) AS fastest
+        FROM saved_builds WHERE outcome = 'won' AND end_turn IS NOT NULL
+        """
+    ).fetchone()
+
+    return {
+        "overall": overall,
+        "by_dimension": by_dimension,
+        "victories": victories,
+        "mean_winning_turn": round(turns["mean"]) if turns["mean"] is not None else None,
+        "fastest_win_turn": turns["fastest"],
+    }

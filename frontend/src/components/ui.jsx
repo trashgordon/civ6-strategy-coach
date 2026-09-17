@@ -332,3 +332,54 @@ export function UnverifiedNames({ names }) {
     </div>
   );
 }
+
+// A build's recorded result, for the archive list and detail header.
+const OUTCOME_TONES = {
+  won: { color: "#7FB069", border: "#4E6B40", label: "Won" },
+  lost: { color: "#C46A52", border: "#7A4133", label: "Lost" },
+  abandoned: { color: T.parchmentDim, border: T.border, label: "Abandoned" },
+};
+
+export function OutcomeBadge({ outcome, victoryType, endTurn }) {
+  const tone = OUTCOME_TONES[outcome];
+  if (!tone) return null;
+  const detail = [victoryType, endTurn ? `T${endTurn}` : null].filter(Boolean).join(" · ");
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        fontSize: "0.7rem",
+        letterSpacing: "0.03em",
+        textTransform: "uppercase",
+        padding: "0.15rem 0.45rem",
+        borderRadius: "2px",
+        border: `1px solid ${tone.border}`,
+        color: tone.color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {tone.label}
+      {detail ? ` · ${detail}` : ""}
+    </span>
+  );
+}
+
+// Win rates are meaningless without the sample they came from, so the record is
+// always shown and the percentage is secondary.
+export function WinRate({ won, lost, rate }) {
+  const decided = won + lost;
+  if (!decided) {
+    return <span style={{ color: T.parchmentDim, fontSize: "0.8rem" }}>—</span>;
+  }
+  return (
+    <span style={{ fontVariantNumeric: "tabular-nums", fontSize: "0.85rem" }}>
+      <span style={{ color: T.parchment }}>
+        {won}–{lost}
+      </span>
+      <span style={{ color: T.parchmentDim, fontSize: "0.78rem" }}>
+        {" "}
+        ({Math.round((rate ?? 0) * 100)}%)
+      </span>
+    </span>
+  );
+}

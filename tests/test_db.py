@@ -15,6 +15,7 @@ def test_migrate_creates_the_schema_and_stamps_the_version():
         "id", "created_at", "title", "ruleset", "difficulty", "map_type",
         "config_json", "civ", "city_philosophy", "primary_focus", "posture",
         "playstyle_text", "generated_plan", "notes",
+        "outcome", "victory_type", "end_turn",
     }
 
 
@@ -181,3 +182,111 @@ def test_title_and_notes_update_independently():
     only_title = db.update_build(build["id"], title="Renamed")
     assert only_title["title"] == "Renamed"
     assert only_title["notes"] == "Turn 40: forward-settled by Rome"   # untouched
+
+
+def test_a_v4_database_gains_outcome_columns_without_losing_builds():
+    conn = db.connect()
+    with conn:
+        for schema in (db.SCHEMA_V1, db.SCHEMA_V2, db.SCHEMA_V3, db.SCHEMA_V4):
+            conn.executescript(schema)
+        conn.execute("PRAGMA user_version = 4")
+    saved = db.insert_build(
+        title="Korea — Science", config_dict={}, civ="Korea", city_philosophy="Tall",
+        primary_focus="Science", posture="", playstyle_text="tech",
+        generated_plan="## Civ & Leader\n**Korea**",
+    )
+    db.update_build(saved["id"], notes="turn 40 notes")
+
+    assert db.migrate() == db.CURRENT_VERSION
+
+    build = db.get_build(saved["id"])
+    assert build["title"] == "Korea — Science"
+    assert build["notes"] == "turn 40 notes"
+    # New columns default to "not recorded", not to a guess.
+    assert build["outcome"] == ""
+    assert build["victory_type"] == ""
+    assert build["end_turn"] is None
+
+
+def _won(civ, focus, turn=None, outcome="won", victory="Science"):
+    build = db.insert_build(
+        title=f"{civ} — {focus}", config_dict={"mapType": "Pangaea"}, civ=civ,
+        city_philosophy="Tall", primary_focus=focus, posture="", playstyle_text="",
+        generated_plan="plan",
+    )
+    db.update_build(build["id"], outcome=outcome, victory_type=victory, end_turn=turn)
+    return build["id"]
+
+
+def test_stats_report_counts_alongside_every_rate():
+    db.migrate()
+    _won("Korea", "Science", turn=247)
+    _won("Korea", "Science", turn=210)
+    _won("Korea", "Science", outcome="lost", victory="")
+    _won("Rome", "Domination", outcome="abandoned", victory="")
+    db.insert_build(
+        title="unlogged", config_dict={}, civ="Maori", city_philosophy="",
+        primary_focus="Culture", posture="", playstyle_text="", generated_plan="p",
+    )
+
+    stats = db.outcome_stats()
+    overall = stats["overall"]
+    assert (overall["won"], overall["lost"], overall["abandoned"]) == (2, 1, 1)
+    assert overall["unrecorded"] == 1
+    assert overall["win_rate"] == round(2 / 3, 3)   # abandoned doesn't count either way
+
+    korea = next(
+        e for e in stats["by_dimension"]["civ"]["entries"] if e["value"] == "Korea"
+    )
+    assert (korea["won"], korea["lost"]) == (2, 1)
+    assert stats["victories"] == [{"victory_type": "Science", "count": 2}]
+    assert stats["mean_winning_turn"] == round((247 + 210) / 2)
+    assert stats["fastest_win_turn"] == 210
+
+
+def test_stats_ignore_no_preference_as_a_dimension():
+    db.migrate()
+    build = db.insert_build(
+        title="x", config_dict={}, civ="", city_philosophy="No preference",
+        primary_focus="No preference", posture="", playstyle_text="", generated_plan="p",
+    )
+    db.update_build(build["id"], outcome="won")
+
+    stats = db.outcome_stats()
+    assert stats["by_dimension"]["civ"]["entries"] == []
+    assert stats["by_dimension"]["city_philosophy"]["entries"] == []
+    # It still counts towards the overall record.
+    assert stats["overall"]["won"] == 1
+
+
+def test_an_end_turn_can_be_cleared():
+    db.migrate()
+    build = db.insert_build(
+        title="x", config_dict={}, civ="Korea", city_philosophy="", primary_focus="",
+        posture="", playstyle_text="", generated_plan="p",
+    )
+    db.update_build(build["id"], end_turn=247)
+    assert db.get_build(build["id"])["end_turn"] == 247
+
+    db.update_build(build["id"], clear_end_turn=True)
+    assert db.get_build(build["id"])["end_turn"] is None
+
+
+def test_dimensions_omit_values_with_nothing_decided():
+    """An abandoned-only civ says nothing about what wins."""
+    db.migrate()
+    abandoned = db.insert_build(
+        title="x", config_dict={}, civ="Ethiopia", city_philosophy="", primary_focus="",
+        posture="", playstyle_text="", generated_plan="p",
+    )
+    db.update_build(abandoned["id"], outcome="abandoned")
+    decided = db.insert_build(
+        title="y", config_dict={}, civ="Korea", city_philosophy="", primary_focus="",
+        posture="", playstyle_text="", generated_plan="p",
+    )
+    db.update_build(decided["id"], outcome="won")
+
+    civs = [e["value"] for e in db.outcome_stats()["by_dimension"]["civ"]["entries"]]
+    assert civs == ["Korea"]
+    # Still counted in the overall tally.
+    assert db.outcome_stats()["overall"]["abandoned"] == 1

@@ -53,6 +53,18 @@ export const DEFAULT_CONFIG = {
 
 export const NO_PREFERENCE = "No preference";
 
+// How a game ended. "" means not recorded, which most builds will stay.
+export const OUTCOMES = [
+  { value: "", label: "Not recorded" },
+  { value: "won", label: "Won" },
+  { value: "lost", label: "Lost" },
+  { value: "abandoned", label: "Abandoned" },
+];
+
+export const VICTORY_TYPES = [
+  "Science", "Culture", "Domination", "Religious", "Diplomatic", "Score",
+];
+
 export const CITY_PHILOSOPHIES = ["Tall", "Wide", NO_PREFERENCE];
 export const PRIMARY_FOCUSES = [
   "Culture", "Science", "Domination", "Religion", "Diplomacy", NO_PREFERENCE,

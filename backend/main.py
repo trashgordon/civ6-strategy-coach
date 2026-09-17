@@ -55,10 +55,49 @@ class GenerateRequest(BaseModel):
 
 
 class BuildUpdate(BaseModel):
-    """Either field may be omitted; whatever is sent is what changes."""
+    """Any field may be omitted; whatever is sent is what changes."""
 
     title: str | None = None
     notes: str | None = None
+    outcome: str | None = None
+    victory_type: str | None = None
+    end_turn: int | None = None
+
+    @field_validator("outcome")
+    @classmethod
+    def known_outcome(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip().lower()
+        # "" clears it back to unrecorded, which is a legitimate edit.
+        if value and value not in db.OUTCOMES:
+            raise ValueError(f"outcome must be one of {', '.join(db.OUTCOMES)}, or empty")
+        return value
+
+    @field_validator("victory_type")
+    @classmethod
+    def known_victory(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return ""
+        match = {v.lower(): v for v in db.VICTORY_TYPES}.get(value.lower())
+        if match is None:
+            raise ValueError(
+                f"victory_type must be one of {', '.join(db.VICTORY_TYPES)}, or empty"
+            )
+        return match
+
+    @field_validator("end_turn")
+    @classmethod
+    def sane_turn(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        # 0 clears it; a real game can't end before turn 1 or run past a few thousand.
+        if value and not (1 <= value <= 5000):
+            raise ValueError("end_turn must be between 1 and 5000, or 0 to clear it")
+        return value
 
     @field_validator("title")
     @classmethod
@@ -231,7 +270,15 @@ def update_build(build_id: int, payload: BuildUpdate) -> dict[str, Any]:
     """Rename a build and/or edit its campaign journal."""
     if db.get_build(build_id) is None:
         raise HTTPException(status_code=404, detail="No build with that id")
-    build = db.update_build(build_id, title=payload.title, notes=payload.notes)
+    build = db.update_build(
+        build_id,
+        title=payload.title,
+        notes=payload.notes,
+        outcome=payload.outcome,
+        victory_type=payload.victory_type,
+        end_turn=payload.end_turn or None,
+        clear_end_turn=payload.end_turn == 0,
+    )
     build["usage"] = db.usage_for_build(build_id)
     build["unverified_names"] = facts.unverified_names(build["generated_plan"])
     return build
@@ -253,6 +300,15 @@ def usage() -> dict[str, Any]:
     totals = db.usage_totals()
     totals["recent"] = db.recent_api_calls(limit=50)
     return totals
+
+
+@app.get("/api/stats", dependencies=[Depends(require_auth)])
+def stats() -> dict[str, Any]:
+    """Win/loss records, overall and by civ, focus, posture, map and difficulty."""
+    body = db.outcome_stats()
+    body["outcomes"] = list(db.OUTCOMES)
+    body["victory_types"] = list(db.VICTORY_TYPES)
+    return body
 
 
 # -------------------------------------------------------------------------- compare

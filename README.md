@@ -219,8 +219,9 @@ backend/   FastAPI — serves the API and those static files on one port
 The three tabs map to three endpoints: `POST /api/generate` (generate + auto-save),
 `GET /api/builds` (archive, with search and filters), and `POST /api/compare` (the
 side-by-side table plus a compare-and-contrast writeup from a second prompt).
-`GET /api/usage` reports what all of it has cost, and `PATCH /api/builds/{id}` renames a
-build or edits its campaign journal.
+`GET /api/usage` reports what all of it has cost, `GET /api/stats` reports what actually
+won, and `PATCH /api/builds/{id}` renames a build, edits its campaign journal, or records
+how the game went.
 
 A plan has eleven sections. Three of them exist because the first version of this
 app didn't have them and the plans were worse for it:
@@ -233,6 +234,18 @@ app didn't have them and the plans were worse for it:
   warning sign for each, and the pivot That section
 leans on the extracted data: without it the coach can only say "send envoys for suzerain
 bonuses", which isn't advice.
+
+### Outcome tracking
+
+A plan is only advice until you know whether it worked. Open a build in the Archive,
+**Log result** — won, lost or abandoned, the victory type, the turn it ended — and the
+**Stats** tab turns the archive into a record: win rate overall and broken down by civ,
+focus, city philosophy, posture, map and difficulty, plus victories by type and your
+average winning turn.
+
+Every rate is shown next to the record it came from (`3–1 (75%)`, not `75%`), and under
+five decided games the view says so. With a handful of games a bare percentage invites
+reading a trend into a coin flip.
 
 Smaller things worth knowing: **🎲 Surprise me** rolls a civ and all three style
 dropdowns (never "No preference" — a randomiser that shrugs isn't a surprise),

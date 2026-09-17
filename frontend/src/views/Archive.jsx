@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { Markdown } from "../markdown";
+import { OUTCOMES, VICTORY_TYPES } from "../data";
 import { SERIF, T } from "../theme";
 import {
-  Button, Empty, ErrorNote, Panel, Select, Tag, TextInput, UnverifiedNames,
-  UsageNote, formatDate,
+  Button, Empty, ErrorNote, NumberInput, OutcomeBadge, Panel, Select, Tag, TextInput,
+  UnverifiedNames, UsageNote, formatDate,
 } from "../components/ui";
 
 function BuildRow({ build, active, onSelect }) {
@@ -32,7 +33,14 @@ function BuildRow({ build, active, onSelect }) {
         }}
       >
         <span style={{ fontFamily: SERIF, fontSize: "0.98rem" }}>{build.title}</span>
-        {build.civ && <Tag tone="brass">{build.civ}</Tag>}
+        <span style={{ display: "flex", gap: "0.3rem", flexShrink: 0 }}>
+          <OutcomeBadge
+            outcome={build.outcome}
+            victoryType={build.victory_type}
+            endTurn={build.end_turn}
+          />
+          {build.civ && <Tag tone="brass">{build.civ}</Tag>}
+        </span>
       </div>
       <div
         style={{
@@ -47,7 +55,9 @@ function BuildRow({ build, active, onSelect }) {
   );
 }
 
-export default function Archive({ focusBuildId, onFocusConsumed, refreshKey, onCompareWith }) {
+export default function Archive({
+  focusBuildId, onFocusConsumed, refreshKey, onCompareWith, onOutcomeLogged,
+}) {
   const [builds, setBuilds] = useState([]);
   const [filters, setFilters] = useState({ civs: [], focuses: [] });
   const [query, setQuery] = useState("");
@@ -67,6 +77,12 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey, onC
   const [notesOpen, setNotesOpen] = useState(false);
   const [draftNotes, setDraftNotes] = useState("");
   const [notesSaved, setNotesSaved] = useState(false);
+  // How the game went. Saved explicitly, like the journal.
+  const [outcomeOpen, setOutcomeOpen] = useState(false);
+  const [draftOutcome, setDraftOutcome] = useState("");
+  const [draftVictory, setDraftVictory] = useState("");
+  const [draftTurn, setDraftTurn] = useState("");
+  const [outcomeSaved, setOutcomeSaved] = useState(false);
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -110,6 +126,11 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey, onC
         setDraftNotes(build.notes || "");
         setNotesOpen(Boolean(build.notes));
         setNotesSaved(false);
+        setDraftOutcome(build.outcome || "");
+        setDraftVictory(build.victory_type || "");
+        setDraftTurn(build.end_turn ? String(build.end_turn) : "");
+        setOutcomeOpen(Boolean(build.outcome));
+        setOutcomeSaved(false);
         setDetailError(null);
       })
       .catch((e) => {
@@ -144,6 +165,26 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey, onC
       setTimeout(() => setNotesSaved(false), 2000);
     } catch (e) {
       setDetailError(e.message || "Couldn't save those notes.");
+    }
+  }
+
+  async function saveOutcome() {
+    if (!selected) return;
+    try {
+      const updated = await api.saveOutcome(selected.id, {
+        outcome: draftOutcome,
+        // A loss or an abandoned game has no victory type to record.
+        victoryType: draftOutcome === "won" ? draftVictory : "",
+        endTurn: draftTurn,
+      });
+      setSelected(updated);
+      setDraftVictory(updated.victory_type || "");
+      setOutcomeSaved(true);
+      setTimeout(() => setOutcomeSaved(false), 2000);
+      loadList();
+      onOutcomeLogged?.();
+    } catch (e) {
+      setDetailError(e.message || "Couldn't save that result.");
     }
   }
 
@@ -309,6 +350,16 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey, onC
                     </Button>
                     <Button
                       variant="ghost"
+                      onClick={() => setOutcomeOpen((open) => !open)}
+                    >
+                      {outcomeOpen
+                        ? "Hide result"
+                        : selected.outcome
+                        ? "Result"
+                        : "Log result"}
+                    </Button>
+                    <Button
+                      variant="ghost"
                       onClick={() => setNotesOpen((open) => !open)}
                     >
                       {notesOpen ? "Hide notes" : selected.notes ? "Notes" : "Add notes"}
@@ -332,6 +383,13 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey, onC
                 <span style={{ color: T.parchmentDim, fontSize: "0.78rem" }}>
                   {formatDate(selected.created_at)}
                 </span>
+                {selected.outcome && (
+                  <OutcomeBadge
+                    outcome={selected.outcome}
+                    victoryType={selected.victory_type}
+                    endTurn={selected.end_turn}
+                  />
+                )}
                 {selected.usage && (
                   <>
                     <UsageNote usage={selected.usage} />
@@ -366,6 +424,74 @@ export default function Archive({ focusBuildId, onFocusConsumed, refreshKey, onC
                 </p>
               )}
             </header>
+
+            {outcomeOpen && (
+              <div
+                style={{
+                  margin: "1rem 0 0", padding: "0.9rem", background: T.panelAlt,
+                  border: `1px solid ${T.border}`, borderRadius: "3px",
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: SERIF, color: T.brass,
+                    fontSize: "0.95rem", marginBottom: "0.6rem",
+                  }}
+                >
+                  How did it go?
+                </div>
+                <div
+                  style={{
+                    display: "flex", gap: "0.75rem",
+                    flexWrap: "wrap", alignItems: "center",
+                  }}
+                >
+                  <Select
+                    ariaLabel="Result"
+                    value={draftOutcome}
+                    options={OUTCOMES.filter((o) => o.value).map((o) => o.label)}
+                    placeholder="Not recorded"
+                    onChange={(label) =>
+                      setDraftOutcome(
+                        (OUTCOMES.find((o) => o.label === label) || {}).value ?? ""
+                      )
+                    }
+                    style={{ minWidth: "9rem" }}
+                  />
+                  {draftOutcome === "won" && (
+                    <Select
+                      ariaLabel="Victory type"
+                      value={draftVictory}
+                      options={VICTORY_TYPES}
+                      placeholder="Victory type…"
+                      onChange={setDraftVictory}
+                      style={{ minWidth: "9rem" }}
+                    />
+                  )}
+                  <label
+                    style={{
+                      display: "flex", alignItems: "center",
+                      gap: "0.4rem", color: T.parchmentDim, fontSize: "0.82rem",
+                    }}
+                  >
+                    Ended turn
+                    <NumberInput
+                      ariaLabel="End turn"
+                      value={draftTurn === "" ? "" : Number(draftTurn)}
+                      min={0}
+                      max={5000}
+                      onChange={(v) => setDraftTurn(v === 0 ? "" : String(v))}
+                    />
+                  </label>
+                  <Button variant="solid" onClick={saveOutcome}>
+                    Save result
+                  </Button>
+                  {outcomeSaved && (
+                    <span style={{ color: T.brass, fontSize: "0.78rem" }}>Saved</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {notesOpen && (
               <div

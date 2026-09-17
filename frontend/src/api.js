@@ -53,6 +53,17 @@ export const api = {
     request(`/builds/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
   saveNotes: (id, notes) =>
     request(`/builds/${id}`, { method: "PATCH", body: JSON.stringify({ notes }) }),
+  saveOutcome: (id, { outcome, victoryType, endTurn }) =>
+    request(`/builds/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        outcome,
+        victory_type: victoryType,
+        // 0 is the documented way to clear a turn count; null would mean "untouched".
+        end_turn: endTurn === "" || endTurn === null ? 0 : Number(endTurn),
+      }),
+    }),
+  stats: () => request("/stats"),
   remove: (id) => request(`/builds/${id}`, { method: "DELETE" }),
 
   usage: () => request("/usage"),

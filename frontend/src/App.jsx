@@ -5,12 +5,14 @@ import { Button, ErrorNote, formatCost } from "./components/ui";
 import NewBriefing from "./views/NewBriefing";
 import Archive from "./views/Archive";
 import Compare from "./views/Compare";
+import Stats from "./views/Stats";
 import Login from "./views/Login";
 
 const TABS = [
   { key: "new", label: "New briefing" },
   { key: "archive", label: "Archive" },
   { key: "compare", label: "Compare" },
+  { key: "stats", label: "Stats" },
 ];
 
 function Tabs({ active, onChange }) {
@@ -215,8 +217,10 @@ export default function App() {
             focusBuildId={focusBuildId}
             onFocusConsumed={() => setFocusBuildId(null)}
             onCompareWith={compareWith}
+            onOutcomeLogged={() => setRefreshKey((k) => k + 1)}
           />
         )}
+        {tab === "stats" && <Stats refreshKey={refreshKey} />}
         {tab === "compare" && (
           <Compare
             refreshKey={refreshKey}

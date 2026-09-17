@@ -17,6 +17,7 @@ A local-first, open-source web app: a Civilization VI build coach. Configure a g
 - `data/` and `.env` are gitignored from the first commit, always
 - Schema changes: bump `PRAGMA user_version` and run the needed `ALTER TABLE` at startup — no migration framework
 - Build the MVP first (see the brief's feature backlog) before touching anything in the backlog list
+- Backlog done so far: outcome tracking (#1), campaign journal (#3), surprise me (#8)
 
 ## Game-data grounding
 `backend/extract_gamedata.py` pulls canonical names from the user's own Civ VI install
