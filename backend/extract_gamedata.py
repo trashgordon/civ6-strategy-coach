@@ -47,6 +47,16 @@ _ATTR = re.compile(r'(\w+)="([^"]*)"')
 
 # Table -> (the attribute holding the display-name key, output filename, label).
 # Wonders are split out of Buildings by the IsWonder flag.
+# Groups where naming the thing isn't enough — the coach makes claims about what it
+# does, and recalling that from training is where the errors come from ("Corvée for
+# settlers" when Corvée is +15% production toward ancient and classical wonders).
+# A tuple, not a set: two tables can define rows that resolve to the same display
+# name, so iteration order decides which effect wins and must be deterministic.
+_WITH_EFFECTS = (
+    "Policies", "Beliefs", "Civics", "Technologies", "Governments", "Districts",
+    "Buildings", "Improvements", "Governors", "GovernorPromotions",
+)
+
 _TABLES = [
     ("Technologies", "Name", "technologies", "Technologies"),
     ("Civics", "Name", "civics", "Civics"),
@@ -151,11 +161,53 @@ def _collect_rows(assets: Path) -> dict[str, list[dict[str, str]]]:
     return tables
 
 
+def _effects(
+    rows: dict[str, list[dict[str, str]]],
+    strings: dict[str, set[str]],
+) -> dict[str, str]:
+    """{display name: what it actually does}, for every table that carries one."""
+    found: dict[str, str] = {}
+    for table in _WITH_EFFECTS:
+        for row in rows.get(table, []):
+            name_key, desc_key = row.get("Name"), row.get("Description")
+            if not name_key or not desc_key:
+                continue
+            # The canonical pairing shares a stem: LOC_POLICY_CORVEE_{NAME,DESCRIPTION}.
+            # Scenario rows reuse a display name with an unrelated key, which is how
+            # "Serfdom" ended up described as a farm bonus.
+            if name_key.removesuffix("_NAME") != desc_key.removesuffix("_DESCRIPTION"):
+                continue
+            names = strings.get(name_key, set())
+            descriptions = strings.get(desc_key, set())
+            if not names or not descriptions:
+                continue
+            name = _clean(sorted(names)[0])
+            # Prefer the fullest wording when a scenario redefines the key.
+            effect = _clean_text(sorted(descriptions, key=len)[-1])
+            if name and effect and len(effect) <= 300:
+                found.setdefault(name, effect)
+
+    # Civ and leader abilities live only in localization, paired by tag.
+    for tag, values in strings.items():
+        if not (tag.startswith("LOC_TRAIT_") and tag.endswith("_NAME")):
+            continue
+        description = strings.get(tag[: -len("_NAME")] + "_DESCRIPTION", set())
+        if not description:
+            continue
+        name = _clean(sorted(values)[0]) if values else None
+        effect = _clean_text(sorted(description, key=len)[-1])
+        if name and effect and len(effect) <= 300:
+            found.setdefault(name, effect)
+    return found
+
+
 def _clean_text(value: str) -> str:
     """Strip Civ's icon markup so a bonus reads as a sentence."""
     value = _ICON.sub(r"\1", value or "")
     value = _BRACKETED.sub("", value)
-    return re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"\s+", " ", value).strip()
+    # "[ICON_Production] Production" expands to "Production Production".
+    return re.sub(r"\b(\w+) \1\b", r"\1", value, flags=re.IGNORECASE)
 
 
 def _city_states(assets: Path, strings: dict[str, set[str]]) -> list[dict[str, str]]:
@@ -241,6 +293,7 @@ def extract() -> dict[str, list]:
         facts[out_name] = sorted(v for v in harvested if v)
 
     facts["city_states"] = _city_states(assets, strings)
+    facts["effects"] = _effects(rows, strings)
 
     # Golden Age dedications are the commemoration categories, named via LOC_MOMENT_*.
     dedications = {
@@ -277,7 +330,11 @@ def main() -> int:
     for name, values in sorted(facts.items()):
         (out / f"{name}.json").write_text(json.dumps(values, indent=1, ensure_ascii=False))
         total += len(values)
-        note = " (with suzerain bonuses)" if name == "city_states" else ""
+        note = ""
+        if name == "city_states":
+            note = " (with suzerain bonuses)"
+        elif name == "effects":
+            note = " (what things actually do)"
         print(f"  {name:22} {len(values):>5}{note}")
     print(f"\n  {'TOTAL':22} {total:>5} names -> {out}")
     return 0

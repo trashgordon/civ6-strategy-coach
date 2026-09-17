@@ -67,6 +67,24 @@ _ALLOWED = {
 
 
 @lru_cache(maxsize=1)
+def effects() -> dict[str, str]:
+    """{name: what it actually does}, from the game's own description text.
+
+    This is the difference between the coach knowing "Corvée" is a real card and
+    knowing it is +15% production toward ancient and classical wonders rather than,
+    as it kept asserting, something to do with settlers.
+    """
+    path = facts_dir() / "effects.json"
+    if not path.is_file():
+        return {}
+    try:
+        loaded = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+@lru_cache(maxsize=1)
 def city_states() -> tuple[dict[str, str], ...]:
     """Every city-state with its category and suzerain bonus."""
     directory = facts_dir()
@@ -94,6 +112,8 @@ def _load() -> dict[str, tuple[str, ...]]:
             values = json.loads(path.read_text())
         except (OSError, json.JSONDecodeError):
             continue
+        if path.stem == "effects":
+            continue
         if isinstance(values, list):
             # city_states is a list of objects, handled by city_states() instead.
             loaded[path.stem] = tuple(
@@ -108,6 +128,7 @@ def reload() -> None:
     _known_names.cache_clear()
     _proper_nouns.cache_clear()
     city_states.cache_clear()
+    effects.cache_clear()
 
 
 def available() -> bool:
@@ -197,11 +218,12 @@ def prompt_block(max_names_per_category: int = 400) -> str:
     if not data:
         return ""
 
+    known_effects = effects()
     lines = [
-        "These are the real names from the installed game. When you name a tech, civic,",
-        "wonder, district, policy card, belief, governor, government or Golden Age",
-        "dedication, use one of these exactly. If what you want isn't listed, say so",
-        "rather than inventing a name.",
+        "These are the real names from the installed game, with what they actually do",
+        "where the game defines it. Use these names exactly, and describe an effect only",
+        "as it is written here — don't recall it from memory and don't invent a name. If",
+        "what you want isn't listed, say so.",
         "",
     ]
     for category, label in INJECT_CATEGORIES:
@@ -209,7 +231,18 @@ def prompt_block(max_names_per_category: int = 400) -> str:
         if not values:
             continue
         shown = values[:max_names_per_category]
-        lines.append(f"{label}: " + "; ".join(shown))
+        lines.append(f"{label}:")
+        for value in shown:
+            effect = known_effects.get(value)
+            lines.append(f"- {value}: {effect}" if effect else f"- {value}")
+        lines.append("")
+
+    abilities = data.get("abilities", ())
+    described = [(a, known_effects[a]) for a in abilities if a in known_effects]
+    if described:
+        lines.append("Civ and leader abilities:")
+        for name, effect in described:
+            lines.append(f"- {name}: {effect}")
         lines.append("")
 
     states = city_states()

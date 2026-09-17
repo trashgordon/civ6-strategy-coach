@@ -295,3 +295,63 @@ def test_accented_names_fold_to_their_plain_spelling(installed_facts):
 def test_folding_survives_a_slash_split(people_facts):
     """Splitting on "/" checks each half, so both must fold — "Kupe" and "Māori"."""
     assert facts.unverified_names("**Kupe / Māori**") == []
+
+
+# ---------------------------------------------------------------- effect grounding
+
+
+@pytest.fixture
+def effect_facts(installed_facts):
+    (installed_facts / "policy_cards.json").write_text(
+        json.dumps(["Corvée", "Colonization", "Serfdom"])
+    )
+    (installed_facts / "abilities.json").write_text(
+        json.dumps(["Trajan's Column"])
+    )
+    (installed_facts / "effects.json").write_text(
+        json.dumps(
+            {
+                "Corvée": "+15% Production toward Ancient and Classical wonders.",
+                "Colonization": "+50% Production toward Settlers.",
+                "Trajan's Column": "All cities start with an additional City Center building.",
+            }
+        )
+    )
+    facts.reload()
+    return installed_facts
+
+
+def test_effects_reach_the_prompt_beside_their_names(effect_facts):
+    """The bug this exists for: the coach kept calling Corvée a settler card."""
+    block = facts.prompt_block()
+    assert "- Corvée: +15% Production toward Ancient and Classical wonders." in block
+    assert "- Colonization: +50% Production toward Settlers." in block
+
+
+def test_a_name_with_no_recorded_effect_is_still_listed(effect_facts):
+    """Serfdom has no effect in this fixture — the name must not disappear."""
+    block = facts.prompt_block()
+    assert "- Serfdom" in block
+    assert "- Serfdom:" not in block
+
+
+def test_civ_abilities_are_injected_with_their_effects(effect_facts):
+    block = facts.prompt_block()
+    assert "Civ and leader abilities:" in block
+    assert "- Trajan's Column: All cities start with an additional" in block
+
+
+def test_the_prompt_tells_the_model_not_to_recall_effects(effect_facts):
+    block = facts.prompt_block()
+    assert "as it is written here" in block
+
+
+def test_effects_are_optional(no_facts):
+    assert facts.effects() == {}
+    assert facts.prompt_block() == ""
+
+
+def test_effects_do_not_leak_into_name_validation(effect_facts):
+    """effects.json is a mapping; the name loader must skip it, not choke on it."""
+    assert "effects" not in facts.summary()
+    assert facts.unverified_names("**Corvée**") == []

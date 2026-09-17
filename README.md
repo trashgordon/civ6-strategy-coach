@@ -118,9 +118,12 @@ macOS, Windows and Linux Steam installs; set `CIV6_PATH` if not found.
 
 Two things then happen:
 
-- **Prevention** — the real name lists go into the prompt, so the coach picks from a
-  closed set rather than recalling. Costs roughly 4,900 extra input tokens per plan
-  (about +$0.012 on Claude Sonnet 5).
+- **Prevention** — the real names go into the prompt *with what they actually do*, so
+  the coach reads the effect rather than recalling it. This matters more than the names:
+  the coach repeatedly recommended "Corvée for wide infrastructure/settlers" when Corvée
+  is +15% production toward ancient and classical wonders. The name was real, which is
+  why nothing flagged it. With the effect in front of it, the coach stops citing the
+  card for the wrong job.
 - **Detection** — every name the coach puts in bold is checked against the data
   afterwards, and anything unrecognised is flagged above the plan with a ⚠ marker. Free.
 
@@ -132,14 +135,20 @@ Measured on Claude Sonnet 5 with a 5,819-token facts block:
 
 | | cost |
 | --- | --- |
-| First plan (writes the cache) | $0.0299 |
-| Next plan within the window | **$0.0148** |
+| First plan (writes the cache) | $0.116 |
+| Next plan within the window | **$0.030** |
 
-Cache reads are a tenth the price of fresh input, writes are 1.25×. So the honest
-trade: **two plans inside the provider's cache window (~5 minutes) and you're well
-ahead; a single isolated plan costs about $0.003 more** than not caching. Generating a
-few builds in one sitting is exactly the winning case. Set `PROMPT_CACHE=0` to turn it
-off. The header tooltip reports how many tokens have been served from cache.
+Cache reads are a tenth the price of fresh input, writes are 1.25×, and the grounded
+prompt is about 36,000 tokens of which ~35,800 is the cacheable prefix. So caching is
+doing heavy lifting here: **generate a few plans in one sitting and all but the first
+cost a third of the cold price.** A single isolated plan pays the write premium instead.
+Set `PROMPT_CACHE=0` to turn it off, and the header tooltip reports how many tokens have
+been served from cache.
+
+If the cold price bothers you, the effects are the bulk of the block — civ abilities
+(~7,100 tokens) and policy cards (~5,600) are the two largest groups, and trimming the
+ones the coach rarely reasons about (improvements, governor promotions, buildings) would
+recover a good share of it.
 
 **The extracted data is never committed.** Those names are Firaxis/2K's copyrighted
 content, so this repo ships the extractor, not the output — `data/` is gitignored, and
