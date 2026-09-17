@@ -239,3 +239,59 @@ def test_summary_counts_city_states(city_state_facts):
 
 def test_summary_omits_city_states_when_absent(installed_facts):
     assert "city_states" not in facts.summary()
+
+
+# ------------------------------------------- slashes, imperatives, and list vouching
+
+
+def test_a_slash_inside_prose_does_not_yield_a_bare_word(city_state_facts):
+    """"**Tech/civic stagnation from ignoring economy**" flagged a bare "Tech"."""
+    plan = "## What Goes Wrong\n- **Tech/civic stagnation from ignoring economy**: ...\n"
+    assert facts.unverified_names(plan) == []
+
+
+def test_a_bolded_imperative_is_an_instruction_not_a_name(city_state_facts):
+    plan = "## City-States & Envoys\n- **Ignore** Militaristic city-states entirely\n"
+    assert facts.unverified_names(plan) == []
+
+
+def test_slash_separated_names_are_checked_individually(city_state_facts):
+    (city_state_facts / "city_states.json").write_text(
+        json.dumps(
+            [
+                {"name": "Amsterdam", "category": "Trade", "bonus": "Trade bonus."},
+                {"name": "Venice", "category": "Trade", "bonus": "Trade bonus."},
+            ]
+        )
+    )
+    facts.reload()
+    assert facts.unverified_names("**Amsterdam/Venice**") == []
+    # A real name must not vouch for a fabricated one beside it.
+    assert facts.unverified_names("**Amsterdam/Genevia**") == ["Genevia"]
+
+
+def test_loose_phrasing_still_forgiven_when_there_is_no_list(people_facts):
+    """Containment is narrowed to non-list terms, but must still work for these."""
+    assert facts.unverified_names("**Kongo's Mvemba**") == []
+    assert facts.unverified_names("**Kupe / Māori**") == []
+
+
+def test_a_possessive_reference_to_a_real_name_is_not_a_fabrication(installed_facts):
+    """"Political Philosophy's Monarchic Legacy" flagged on a real plan."""
+    plan = "## Government\n- **Political Philosophy's Monarchic Legacy** when available\n"
+    assert facts.unverified_names(plan) == []
+
+
+def test_a_possessive_around_a_fabrication_is_still_caught(installed_facts):
+    assert facts.unverified_names("**Fakeium's Fakery**") == ["Fakeium's Fakery"]
+
+
+def test_accented_names_fold_to_their_plain_spelling(installed_facts):
+    """The civ list says "Maori"; plans write "Māori". Both must be the same name."""
+    assert facts.unverified_names("**Māori**") == []
+    assert facts.unverified_names("**Maori**") == []
+
+
+def test_folding_survives_a_slash_split(people_facts):
+    """Splitting on "/" checks each half, so both must fold — "Kupe" and "Māori"."""
+    assert facts.unverified_names("**Kupe / Māori**") == []

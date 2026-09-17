@@ -222,8 +222,10 @@ side-by-side table plus a compare-and-contrast writeup from a second prompt).
 `GET /api/usage` reports what all of it has cost, and `PATCH /api/builds/{id}` renames a
 build or edits its campaign journal.
 
-A plan has nine sections, including **City-States & Envoys** — which specific
-city-states to chase and what their suzerain bonus does for this build. That section
+A plan has ten sections, including **City-States & Envoys** — which specific
+city-states to chase and what their suzerain bonus does for this build — and
+**What Goes Wrong**, the two or three ways this particular build loses, with the
+early warning sign for each and the pivot. That section
 leans on the extracted data: without it the coach can only say "send envoys for suzerain
 bonuses", which isn't advice.
 

@@ -13,6 +13,7 @@ Run `python -m backend.extract_gamedata` to populate it.
 
 import json
 import re
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
@@ -58,6 +59,10 @@ _ALLOWED = {
     "cultural", "industrial", "militaristic", "religious", "scientific", "trade",
     "cultural city-state", "industrial city-state", "militaristic city-state",
     "religious city-state", "scientific city-state", "trade city-state",
+    # Imperatives the coach bolds to open a bullet.
+    "ignore", "skip", "rush", "grab", "take", "build", "buy", "watch", "stop",
+    "pivot", "avoid", "prioritise", "prioritize", "beeline", "settle", "expand",
+    "tech", "techs", "first", "next", "then", "finally", "result", "fix",
 }
 
 
@@ -124,6 +129,17 @@ def summary() -> dict[str, int]:
     return counts
 
 
+def _fold(text: str) -> str:
+    """Lowercase and strip diacritics, so "Māori" and "Maori" are the same name.
+
+    Civ VI is full of accented names and plans spell them either way. Replacing the
+    accented character rather than folding it turned "Māori" into "m ori", which matched
+    nothing.
+    """
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
+
+
 def _variants(term: str) -> set[str]:
     """Every spelling of `term` worth matching on.
 
@@ -131,7 +147,7 @@ def _variants(term: str) -> set[str]:
     "Games and Recreation", "Enlightenment" vs "The Enlightenment", "Classical" vs
     "Classical Era", "Great Scientists" vs "Great Scientist", "Renaissance+".
     """
-    base = term.strip().lower()
+    base = _fold(term.strip())
     base = base.rstrip("+")
     base = re.sub(r"[,\.]", "", base)
     base = base.replace("&", " and ")
@@ -165,6 +181,8 @@ def _known_names() -> frozenset[str]:
     for category in [c for c, _ in INJECT_CATEGORIES] + list(_VALIDATE_ONLY):
         for value in data.get(category, ()):
             names |= _variants(value)
+    for civ in CIVS:
+        names |= _variants(civ)
     for entry in city_states():
         names |= _variants(entry["name"])
         # "Ignore Militaristic city-states" — the category is vocabulary, not a name.
@@ -223,16 +241,16 @@ _MIN_CONTAINMENT = 4  # "Ur" would otherwise match almost anything
 @lru_cache(maxsize=1)
 def _proper_nouns() -> tuple[str, ...]:
     data = _load()
-    names = {c.lower() for c in CIVS}
+    names = {_fold(c) for c in CIVS}
     for category in _PEOPLE_AND_PLACES:
-        names.update(v.lower() for v in data.get(category, ()))
-    names.update(e["name"].lower() for e in city_states())
+        names.update(_fold(v) for v in data.get(category, ()))
+    names.update(_fold(e["name"]) for e in city_states())
     return tuple(n for n in names if len(n) >= _MIN_CONTAINMENT)
 
 
 def _names_a_real_person_or_place(term: str) -> bool:
     """True when `term` overlaps a known leader, civ or Great Person either way round."""
-    lowered = re.sub(r"[^a-z0-9 ]", " ", term.lower())
+    lowered = re.sub(r"[^a-z0-9 ]", " ", _fold(term))
     lowered = re.sub(r"\s+", " ", lowered).strip()
     if not lowered:
         return False
@@ -252,7 +270,9 @@ _CIV_LEADER_SECTION = re.compile(
 
 # The coach's own emphasis is the signal for "this is a name I'm asserting".
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
-_CHAIN = re.compile(r"\s*(?:→|->|➜|»|/)\s*")
+_CHAIN = re.compile(r"\s*(?:→|->|➜|»)\s*")
+# Commas and slashes both introduce lists: "Irrigation, Mining", "Amsterdam/Venice".
+_LIST_SEPARATOR = re.compile(r"\s*[,/]\s*")
 _NAME_PARTICLES = {"and", "of", "the", "&"}
 
 
@@ -297,13 +317,27 @@ def unverified_names(plan: str) -> list[str]:
     return flagged
 
 
-def _recognised(term: str, known: frozenset[str]) -> bool:
+# "Political Philosophy's Monarchic Legacy", "Kongo's Mvemba" — a possessive points at
+# a real thing on one side of the apostrophe.
+_POSSESSIVE = re.compile(r"['\u2019]s\s+")
+
+
+def _recognised(term: str, known: frozenset[str], allow_containment: bool = True) -> bool:
     if _variants(term) & known:
         return True
+    if _POSSESSIVE.search(term):
+        # Either side of the apostrophe may be the real name.
+        for part in _POSSESSIVE.split(term, maxsplit=1):
+            part = part.strip(" .,;:—–-")
+            if part and _variants(part) & known:
+                return True
     # A number or a bare era reference isn't a claim about a game entity.
     if any(ch.isdigit() for ch in term):
         return True
-    return _names_a_real_person_or_place(term)
+    # Containment is for loose phrasing of one name ("Kongo's Mvemba"). Applied to a
+    # list it would let a real entry vouch for a fabricated neighbour, so
+    # "Amsterdam/Genevia" would pass on the strength of Amsterdam alone.
+    return allow_containment and _names_a_real_person_or_place(term)
 
 
 def _checkable_terms(piece: str, known: frozenset[str]) -> list[str]:
@@ -318,16 +352,17 @@ def _checkable_terms(piece: str, known: frozenset[str]) -> list[str]:
     if not term:
         return []
 
+    has_list = bool(_LIST_SEPARATOR.search(term))
     if _looks_like_an_entity(term):
-        if _recognised(term, known):
+        if _recognised(term, known, allow_containment=not has_list):
             return []
-        if "," not in term:
+        if not has_list:
             return [term]
-    elif "," not in term:
+    elif not has_list:
         return []
 
     parts = []
-    for raw in term.split(","):
+    for raw in _LIST_SEPARATOR.split(term):
         item = re.sub(r"^\s*and\s+", "", raw.strip(), flags=re.IGNORECASE)
         item = item.strip(" .;:—–-*()")
         if item:
