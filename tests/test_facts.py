@@ -180,3 +180,52 @@ def test_a_comma_list_of_real_names_is_clean(installed_facts):
 def test_a_fabrication_inside_a_comma_list_is_caught(installed_facts):
     plan = "## Tech Path\n**Bronze Working, Fakeium, Writing**\n"
     assert facts.unverified_names(plan) == ["Fakeium"]
+
+
+# ------------------------------------------------------------------ city-states
+
+
+@pytest.fixture
+def city_state_facts(installed_facts):
+    (installed_facts / "city_states.json").write_text(
+        json.dumps(
+            [
+                {"name": "Geneva", "category": "Scientific",
+                 "bonus": "Your cities earn +15% Science whenever you are not at war."},
+                {"name": "Kumasi", "category": "Cultural",
+                 "bonus": "Trade Routes to any city-state provide +2 Culture."},
+            ]
+        )
+    )
+    facts.reload()
+    return installed_facts
+
+
+def test_city_state_bonuses_reach_the_prompt(city_state_facts):
+    """A name alone is useless — "Geneva" only helps with what Geneva does."""
+    block = facts.prompt_block()
+    assert "Geneva" in block
+    assert "+15% Science" in block
+    assert "Scientific:" in block
+
+
+def test_named_city_states_are_not_flagged(city_state_facts):
+    plan = "## City-States & Envoys\n- **Geneva** (Scientific) for the science\n"
+    assert facts.unverified_names(plan) == []
+
+
+def test_city_state_categories_are_vocabulary_not_names(city_state_facts):
+    """"Ignore Militaristic city-states entirely" flagged on a real plan."""
+    plan = "## City-States & Envoys\n- Ignore **Militaristic** city-states entirely\n"
+    assert facts.unverified_names(plan) == []
+    assert facts.unverified_names("**Cultural city-states**") == []
+
+
+def test_an_invented_city_state_is_still_caught(city_state_facts):
+    plan = "## City-States & Envoys\n- **Genevia** (Scientific) is the one to take\n"
+    assert facts.unverified_names(plan) == ["Genevia"]
+
+
+def test_city_states_are_absent_without_the_file(no_facts):
+    assert facts.city_states() == ()
+    assert facts.prompt_block() == ""

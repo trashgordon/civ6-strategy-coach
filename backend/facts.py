@@ -53,7 +53,29 @@ _ALLOWED = {
     "city-state", "city-states", "great person", "great people", "victory",
     "science victory", "culture victory", "domination victory", "religious victory",
     "diplomatic victory", "tourism", "great work", "theming bonus",
+    # The six city-state categories are fixed game vocabulary — a plan says "ignore
+    # Militaristic city-states" whether or not one is in the injected list.
+    "cultural", "industrial", "militaristic", "religious", "scientific", "trade",
+    "cultural city-state", "industrial city-state", "militaristic city-state",
+    "religious city-state", "scientific city-state", "trade city-state",
 }
+
+
+@lru_cache(maxsize=1)
+def city_states() -> tuple[dict[str, str], ...]:
+    """Every city-state with its category and suzerain bonus."""
+    directory = facts_dir()
+    path = directory / "city_states.json"
+    if not path.is_file():
+        return ()
+    try:
+        entries = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return ()
+    return tuple(
+        e for e in entries
+        if isinstance(e, dict) and e.get("name") and e.get("bonus")
+    )
 
 
 @lru_cache(maxsize=1)
@@ -68,7 +90,10 @@ def _load() -> dict[str, tuple[str, ...]]:
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(values, list):
-            loaded[path.stem] = tuple(str(v) for v in values if v)
+            # city_states is a list of objects, handled by city_states() instead.
+            loaded[path.stem] = tuple(
+                str(v) for v in values if v and not isinstance(v, dict)
+            )
     return loaded
 
 
@@ -77,6 +102,7 @@ def reload() -> None:
     _load.cache_clear()
     _known_names.cache_clear()
     _proper_nouns.cache_clear()
+    city_states.cache_clear()
 
 
 def available() -> bool:
@@ -128,6 +154,11 @@ def _known_names() -> frozenset[str]:
     for category in [c for c, _ in INJECT_CATEGORIES] + list(_VALIDATE_ONLY):
         for value in data.get(category, ()):
             names |= _variants(value)
+    for entry in city_states():
+        names |= _variants(entry["name"])
+        # "Ignore Militaristic city-states" — the category is vocabulary, not a name.
+        names |= _variants(entry["category"])
+        names |= _variants(f"{entry['category']} city-state")
     return frozenset(names)
 
 
@@ -151,6 +182,22 @@ def prompt_block(max_names_per_category: int = 400) -> str:
         shown = values[:max_names_per_category]
         lines.append(f"{label}: " + "; ".join(shown))
         lines.append("")
+
+    states = city_states()
+    if states:
+        lines.append(
+            "City-states and their suzerain bonuses. Name real ones with the bonus they "
+            "actually give; don't describe a bonus you can't find here."
+        )
+        by_category: dict[str, list[str]] = {}
+        for entry in states:
+            by_category.setdefault(entry["category"], []).append(
+                f"{entry['name']} ({entry['bonus']})"
+            )
+        for category in sorted(by_category):
+            lines.append(f"{category}: " + "; ".join(by_category[category]))
+        lines.append("")
+
     return "\n".join(lines).strip()
 
 
@@ -168,6 +215,7 @@ def _proper_nouns() -> tuple[str, ...]:
     names = {c.lower() for c in CIVS}
     for category in _PEOPLE_AND_PLACES:
         names.update(v.lower() for v in data.get(category, ()))
+    names.update(e["name"].lower() for e in city_states())
     return tuple(n for n in names if len(n) >= _MIN_CONTAINMENT)
 
 

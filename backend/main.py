@@ -15,10 +15,10 @@ log = logging.getLogger("civ6")
 
 # The prompts cap the prose at ~700 and ~400 words (roughly 1000 and 550 tokens), but a
 # reasoning model spends tokens thinking before it writes any of that. Measured on Claude
-# Sonnet 5 at REASONING_EFFORT=low: a full plan lands around 1,900 output tokens. These
-# caps leave room for that without going so high that a non-streaming request risks an
-# HTTP timeout.
-MAX_PLAN_TOKENS = 4000
+# Sonnet 5 at REASONING_EFFORT=low: a ~1000-word plan lands around 2,700 output tokens.
+# These caps leave room for that without going so high that a non-streaming request risks
+# an HTTP timeout — a 16,000-token attempt disconnected mid-call.
+MAX_PLAN_TOKENS = 5500
 MAX_COMPARE_TOKENS = 2500
 
 

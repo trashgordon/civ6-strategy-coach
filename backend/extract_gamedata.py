@@ -36,6 +36,13 @@ _LOC_ROW = re.compile(
     r'<Row\s+Tag="(LOC_[A-Z0-9_]+)"[^>]*>\s*<Text>(.*?)</Text>', re.DOTALL
 )
 _XML_ROW = re.compile(r"<Row\s+([^>]*?)/?>", re.DOTALL)
+# <Row Type="CIVILIZATION_KUMASI" Name="CityStateCategory" Value="CULTURAL"/>
+_CITY_STATE_CATEGORY = re.compile(
+    r'<Row\s+Type="(CIVILIZATION_[A-Z_]+)"\s+Name="CityStateCategory"\s+Value="([A-Z]+)"'
+)
+# Game text is full of [ICON_Culture] markup that means nothing to a model.
+_ICON = re.compile(r"\[ICON_([A-Za-z]+)\]")
+_BRACKETED = re.compile(r"\[[^\]]*\]")
 _ATTR = re.compile(r'(\w+)="([^"]*)"')
 
 # Table -> (the attribute holding the display-name key, output filename, label).
@@ -144,6 +151,41 @@ def _collect_rows(assets: Path) -> dict[str, list[dict[str, str]]]:
     return tables
 
 
+def _clean_text(value: str) -> str:
+    """Strip Civ's icon markup so a bonus reads as a sentence."""
+    value = _ICON.sub(r"\1", value or "")
+    value = _BRACKETED.sub("", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _city_states(assets: Path, strings: dict[str, set[str]]) -> list[dict[str, str]]:
+    """Every city-state with its category and suzerain bonus.
+
+    This is the one fact group that isn't just a name: "send envoys for suzerain
+    bonuses" is useless advice, while "Geneva, +15% science while at peace" is a plan.
+    """
+    categories: dict[str, str] = {}
+    for path in assets.rglob("*.xml"):
+        if "Text" in path.parts:
+            continue
+        try:
+            content = path.read_text(errors="ignore")
+        except OSError:
+            continue
+        for civ, value in _CITY_STATE_CATEGORY.findall(content):
+            categories[civ] = value.title()
+
+    found: dict[str, dict[str, str]] = {}
+    for civ, category in categories.items():
+        names = strings.get(f"LOC_{civ}_NAME", set())
+        bonuses = strings.get(f"LOC_{civ}_BONUS", set())
+        name = _clean(sorted(names)[0]) if names else None
+        bonus = _clean_text(sorted(bonuses, key=len)[-1]) if bonuses else ""
+        if name and bonus:
+            found[name] = {"name": name, "category": category, "bonus": bonus}
+    return [found[k] for k in sorted(found)]
+
+
 def _clean(name: str) -> str | None:
     """Drop unresolved keys, icon markup, and anything that isn't a plain name."""
     if not name:
@@ -156,7 +198,7 @@ def _clean(name: str) -> str | None:
     return name
 
 
-def extract() -> dict[str, list[str]]:
+def extract() -> dict[str, list]:
     install = find_install()
     if install is None:
         raise FileNotFoundError(
@@ -169,7 +211,7 @@ def extract() -> dict[str, list[str]]:
     strings = _load_localization(assets)
     rows = _collect_rows(assets)
 
-    facts: dict[str, list[str]] = {}
+    facts: dict[str, list] = {}
     for table, name_attr, out_name, _label in _TABLES:
         names: set[str] = set()
         wonders: set[str] = set()
@@ -197,6 +239,8 @@ def extract() -> dict[str, list[str]]:
             for value in values
         }
         facts[out_name] = sorted(v for v in harvested if v)
+
+    facts["city_states"] = _city_states(assets, strings)
 
     # Golden Age dedications are the commemoration categories, named via LOC_MOMENT_*.
     dedications = {
@@ -233,7 +277,8 @@ def main() -> int:
     for name, values in sorted(facts.items()):
         (out / f"{name}.json").write_text(json.dumps(values, indent=1, ensure_ascii=False))
         total += len(values)
-        print(f"  {name:22} {len(values):>5}")
+        note = " (with suzerain bonuses)" if name == "city_states" else ""
+        print(f"  {name:22} {len(values):>5}{note}")
     print(f"\n  {'TOTAL':22} {total:>5} names -> {out}")
     return 0
 

@@ -111,8 +111,9 @@ python -m backend.extract_gamedata
 ```
 
 That reads Firaxis's own gameplay XML and localization out of your install and caches
-~2,200 canonical names (techs, civics, wonders, districts, policy cards, beliefs,
-governors, governments, dedications and more) into `data/facts/`. It's auto-detected on
+~2,300 canonical names (techs, civics, wonders, districts, policy cards, beliefs,
+governors, governments, dedications and more) into `data/facts/`, plus all 52
+city-states with their categories and full suzerain bonuses. It's auto-detected on
 macOS, Windows and Linux Steam installs; set `CIV6_PATH` if not found.
 
 Two things then happen:
@@ -220,6 +221,11 @@ The three tabs map to three endpoints: `POST /api/generate` (generate + auto-sav
 side-by-side table plus a compare-and-contrast writeup from a second prompt).
 `GET /api/usage` reports what all of it has cost, and `PATCH /api/builds/{id}` renames a
 build or edits its campaign journal.
+
+A plan has nine sections, including **City-States & Envoys** — which specific
+city-states to chase and what their suzerain bonus does for this build. That section
+leans on the extracted data: without it the coach can only say "send envoys for suzerain
+bonuses", which isn't advice.
 
 Smaller things worth knowing: **🎲 Surprise me** rolls a civ and all three style
 dropdowns (never "No preference" — a randomiser that shrugs isn't a surprise),
