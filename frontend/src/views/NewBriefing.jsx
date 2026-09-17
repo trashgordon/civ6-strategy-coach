@@ -148,9 +148,9 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
               ariaLabel="Civilization"
               value={civ}
               options={CIVS}
-              placeholder="No preference — coach's pick"
+              placeholder="Coach's pick"
               onChange={setCiv}
-              style={{ minWidth: "14rem" }}
+              style={{ width: "14rem", maxWidth: "100%" }}
             />
           </FieldRow>
           <FieldRow label="City philosophy">
@@ -159,7 +159,7 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
               value={cityPhilosophy}
               options={CITY_PHILOSOPHIES}
               onChange={setCityPhilosophy}
-              style={{ minWidth: "14rem" }}
+              style={{ width: "14rem", maxWidth: "100%" }}
             />
           </FieldRow>
           <FieldRow label="Primary focus">
@@ -168,7 +168,7 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
               value={primaryFocus}
               options={PRIMARY_FOCUSES}
               onChange={setPrimaryFocus}
-              style={{ minWidth: "14rem" }}
+              style={{ width: "14rem", maxWidth: "100%" }}
             />
           </FieldRow>
           <FieldRow label="Posture">
@@ -177,7 +177,7 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
               value={posture}
               options={POSTURES}
               onChange={setPosture}
-              style={{ minWidth: "14rem" }}
+              style={{ width: "14rem", maxWidth: "100%" }}
             />
           </FieldRow>
 
