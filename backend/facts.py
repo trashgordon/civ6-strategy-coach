@@ -25,13 +25,13 @@ from .gamedata import CIVS
 INJECT_CATEGORIES = (
     # "dedications" is injected separately, with its per-age bonuses.
     ("governments", "Governments"),
-    ("governors", "Governors"),
     ("technologies", "Technologies"),
     ("civics", "Civics"),
     ("wonders", "Wonders"),
     ("districts", "Districts"),
     ("policy_cards", "Policy cards"),
     ("beliefs", "Religious beliefs"),
+    ("alliances", "Alliance types"),
 )
 
 # Checked against, but not injected — too many names to be worth the tokens, while still
@@ -39,7 +39,7 @@ INJECT_CATEGORIES = (
 _VALIDATE_ONLY = (
     "buildings", "improvements", "units", "resources", "civilizations", "leaders",
     "eras", "yields", "great_people", "projects", "features", "terrains",
-    "governor_promotions", "religions", "abilities", "belief_classes",
+    "religions", "abilities", "belief_classes", "governors", "governor_promotions",
     # Injected separately with their per-age bonuses, but the plain name list is still
     # what validation checks against.
     "dedications",
@@ -85,6 +85,19 @@ def effects() -> dict[str, str]:
     except (OSError, json.JSONDecodeError):
         return {}
     return loaded if isinstance(loaded, dict) else {}
+
+
+@lru_cache(maxsize=1)
+def governor_kits() -> tuple[dict, ...]:
+    """Each governor with the promotions that belong to them."""
+    path = facts_dir() / "governor_kits.json"
+    if not path.is_file():
+        return ()
+    try:
+        entries = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return ()
+    return tuple(e for e in entries if isinstance(e, dict) and e.get("governor"))
 
 
 @lru_cache(maxsize=1)
@@ -146,6 +159,7 @@ def reload() -> None:
     city_states.cache_clear()
     effects.cache_clear()
     dedication_bonuses.cache_clear()
+    governor_kits.cache_clear()
 
 
 def available() -> bool:
@@ -167,6 +181,9 @@ def summary() -> dict[str, int]:
     bonuses = dedication_bonuses()
     if bonuses:
         counts["dedication_bonuses"] = len(bonuses)
+    kits = governor_kits()
+    if kits:
+        counts["governor_kits"] = len(kits)
     return counts
 
 
@@ -224,6 +241,10 @@ def _known_names() -> frozenset[str]:
             names |= _variants(value)
     for civ in CIVS:
         names |= _variants(civ)
+    for kit in governor_kits():
+        names |= _variants(kit["governor"])
+        for promo in kit.get("promotions", []):
+            names |= _variants(promo["name"])
     for entry in dedication_bonuses():
         names |= _variants(entry["name"])
     for entry in city_states():
@@ -265,6 +286,22 @@ def prompt_block(max_names_per_category: int = 400) -> str:
         lines.append("Civ and leader abilities:")
         for name, effect in described:
             lines.append(f"- {name}: {effect}")
+        lines.append("")
+
+    kits = governor_kits()
+    if kits:
+        lines.append(
+            "Governors and the promotions that belong to each. A promotion is only "
+            "available to its own governor, so name the governor and the promotion "
+            "together."
+        )
+        for kit in kits:
+            lines.append(f"- {kit['governor']}")
+            for promo in kit.get("promotions", []):
+                effect = promo.get("effect")
+                lines.append(
+                    f"    {promo['name']}: {effect}" if effect else f"    {promo['name']}"
+                )
         lines.append("")
 
     dedications = dedication_bonuses()

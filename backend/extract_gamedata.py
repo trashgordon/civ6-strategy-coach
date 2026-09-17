@@ -44,7 +44,7 @@ _CITY_STATE_CATEGORY = re.compile(
 # Game text is full of [ICON_Culture] markup that means nothing to a model.
 _ICON = re.compile(r"\[ICON_([A-Za-z]+)\]")
 _BRACKETED = re.compile(r"\[[^\]]*\]")
-_ATTR = re.compile(r'(\w+)="([^"]*)"')
+_ATTR = re.compile(r'(\w+)\s*=\s*"([^"]*)"')
 
 # Table -> (the attribute holding the display-name key, output filename, label).
 # Wonders are split out of Buildings by the IsWonder flag.
@@ -71,6 +71,7 @@ _TABLES = [
     ("Governments", "Name", "governments", "Governments"),
     ("Governors", "Name", "governors", "Governors"),
     ("GovernorPromotions", "Name", "governor_promotions", "Governor promotions"),
+    ("GovernorPromotionSets", "", "_governor_promotion_sets", "internal"),
     ("Units", "Name", "units", "Units"),
     ("Improvements", "Name", "improvements", "Improvements"),
     ("Resources", "Name", "resources", "Resources"),
@@ -92,6 +93,7 @@ _TABLES = [
 # Name attribute — civ and leader abilities ("Enuma Anu Enlil") are the big one.
 _LOC_PREFIX_GROUPS = [
     ("LOC_TRAIT_", "_NAME", "abilities", "Civ & leader abilities"),
+    ("LOC_ALLIANCE_", "", "alliances", "Alliance types", r" Alliance$"),
 ]
 
 
@@ -212,6 +214,66 @@ def _clean_text(value: str) -> str:
     value = re.sub(r"\s+", " ", value).strip()
     # "[ICON_Production] Production" expands to "Production Production".
     return re.sub(r"\b(\w+) \1\b", r"\1", value, flags=re.IGNORECASE)
+
+
+def _governor_kits(
+    rows: dict[str, list[dict[str, str]]],
+    strings: dict[str, set[str]],
+    effects: dict[str, str],
+) -> list[dict]:
+    """Each governor with the promotions that are actually theirs.
+
+    Injected as a flat list of 70 promotions, the model can't tell which governor a
+    promotion belongs to, so it hedged — "take the promotion that boosts Great Person
+    points" instead of naming Grants. The game links them; this carries the link.
+    """
+    # GovernorType -> display name, from the rows that carry a Name.
+    names: dict[str, str] = {}
+    for row in rows.get("Governors", []):
+        gtype, key = row.get("GovernorType"), row.get("Name")
+        if gtype and key:
+            values = strings.get(key, set())
+            if values:
+                cleaned = _clean(sorted(values)[0])
+                if cleaned:
+                    names.setdefault(gtype, cleaned)
+
+    # GovernorPromotionType -> display name.
+    promo_names: dict[str, str] = {}
+    for row in rows.get("GovernorPromotions", []):
+        ptype, key = row.get("GovernorPromotionType"), row.get("Name")
+        if ptype and key:
+            values = strings.get(key, set())
+            if values:
+                cleaned = _clean(sorted(values)[0])
+                if cleaned:
+                    promo_names.setdefault(ptype, cleaned)
+
+    grouped: dict[str, list[str]] = {}
+    for row in rows.get("GovernorPromotionSets", []):
+        gtype, ptype = row.get("GovernorType"), row.get("GovernorPromotion")
+        if not gtype or not ptype:
+            continue
+        name = promo_names.get(ptype)
+        if name:
+            grouped.setdefault(gtype, [])
+            if name not in grouped[gtype]:
+                grouped[gtype].append(name)
+
+    kits = []
+    for gtype, promotions in grouped.items():
+        governor = names.get(gtype)
+        if not governor:
+            continue
+        kits.append(
+            {
+                "governor": governor,
+                "promotions": [
+                    {"name": n, "effect": effects.get(n, "")} for n in promotions
+                ],
+            }
+        )
+    return sorted(kits, key=lambda k: k["governor"])
 
 
 def _dedications(assets: Path, strings: dict[str, set[str]]) -> list[dict[str, str]]:
@@ -341,18 +403,25 @@ def extract() -> dict[str, list]:
         if table == "Buildings":
             facts["wonders"] = sorted(wonders)
 
-    for prefix, suffix, out_name, _label in _LOC_PREFIX_GROUPS:
+    for group in _LOC_PREFIX_GROUPS:
+        prefix, suffix, out_name = group[0], group[1], group[2]
+        # Optional 5th element: a pattern the value itself must match.
+        value_pattern = re.compile(group[4]) if len(group) > 4 else None
         harvested = {
             _clean(value)
             for tag, values in strings.items()
             if tag.startswith(prefix) and tag.endswith(suffix)
             for value in values
+            if value_pattern is None or value_pattern.search(value)
         }
         facts[out_name] = sorted(v for v in harvested if v)
 
     facts["city_states"] = _city_states(assets, strings)
     facts["dedication_bonuses"] = _dedications(assets, strings)
     facts["effects"] = _effects(rows, strings)
+    facts["governor_kits"] = _governor_kits(rows, strings, facts["effects"])
+    # A scan-only table; it exists to build governor_kits, not to be listed.
+    facts.pop("_governor_promotion_sets", None)
 
     # Golden Age dedications are the commemoration categories, named via LOC_MOMENT_*.
     dedications = {
