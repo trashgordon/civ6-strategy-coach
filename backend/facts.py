@@ -110,7 +110,18 @@ def available() -> bool:
 
 
 def summary() -> dict[str, int]:
-    return {name: len(values) for name, values in _load().items()}
+    """How many of each fact group is loaded, for /api/meta.
+
+    city_states is counted separately: _load() strips the dict entries, so reading the
+    count from there reports 0 for a group that is in fact populated.
+    """
+    counts = {name: len(values) for name, values in _load().items()}
+    states = city_states()
+    if states:
+        counts["city_states"] = len(states)
+    else:
+        counts.pop("city_states", None)
+    return counts
 
 
 def _variants(term: str) -> set[str]:

@@ -229,3 +229,13 @@ def test_an_invented_city_state_is_still_caught(city_state_facts):
 def test_city_states_are_absent_without_the_file(no_facts):
     assert facts.city_states() == ()
     assert facts.prompt_block() == ""
+
+
+def test_summary_counts_city_states(city_state_facts):
+    """_load() strips the dict entries, so the count has to come from city_states()."""
+    assert facts.summary()["city_states"] == 2
+    assert facts.summary()["technologies"] == 2
+
+
+def test_summary_omits_city_states_when_absent(installed_facts):
+    assert "city_states" not in facts.summary()
