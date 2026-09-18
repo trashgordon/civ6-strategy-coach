@@ -78,8 +78,8 @@ MODEL=ollama/llama3.1
 
 > **A caveat, plainly stated:** the system prompt was tuned against Claude's
 > instruction-following. Other providers should work — the call is provider-agnostic —
-> but they haven't been tightly verified, especially the 8-section structure and the word
-> limit. Contributions testing against other models are very welcome.
+> but they haven't been tightly verified, especially the twelve-section structure and the
+> word limit. `python -m evals.run` against another `MODEL` is the quickest way to check. Contributions testing against other models are very welcome.
 
 ## Configuration
 
@@ -131,7 +131,7 @@ Two things then happen:
 
 The facts block is byte-identical on every call, so it's sent as a cached prefix — the
 volatile part (your configuration) sits after the breakpoint and never invalidates it.
-Measured on Claude Sonnet 5 with a 5,819-token facts block:
+Measured on Claude Sonnet 5 with the full grounding block (~35,800 cached tokens):
 
 | | cost |
 | --- | --- |
@@ -145,10 +145,11 @@ cost a third of the cold price.** A single isolated plan pays the write premium 
 Set `PROMPT_CACHE=0` to turn it off, and the header tooltip reports how many tokens have
 been served from cache.
 
-If the cold price bothers you, the effects are the bulk of the block — civ abilities
-(~7,100 tokens) and policy cards (~5,600) are the two largest groups, and trimming the
-ones the coach rarely reasons about (improvements, governor promotions, buildings) would
-recover a good share of it.
+If the cold price bothers you, don't trim the block to fix it: civ abilities and policy
+cards are half of it, and they're exactly where the misattributions happened. Filtering
+abilities down to the chosen civ looks tempting but makes things worse — the block would
+change with every civ, turning each change into a cold write of the whole prefix. A
+longer cache TTL is the lever that actually helps.
 
 **The extracted data is never committed.** Those names are Firaxis/2K's copyrighted
 content, so this repo ships the extractor, not the output — `data/` is gitignored, and
@@ -165,8 +166,8 @@ models) spend output tokens on internal reasoning *before* writing any of the an
 Left unbounded, reasoning eats the entire token budget and you get an empty plan.
 
 `REASONING_EFFORT` defaults to `low`, which is right for this app — the coach's brief is
-deliberately short, not a proof. Measured on Claude Sonnet 5: a full 8-section plan costs
-about 1,900 output tokens and lands at ~$0.02. Raise it to `medium` or `high` if you want
+deliberately short, not a proof. Measured on Claude Sonnet 5: a full twelve-section plan
+comes to about 2,900 output tokens. Raise it to `medium` or `high` if you want
 more deliberation and are happy to pay for it. Models that don't reason ignore it.
 
 If a plan ever comes back empty, the error names the cause and the knob to turn rather
