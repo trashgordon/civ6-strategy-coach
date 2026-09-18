@@ -260,6 +260,16 @@ A plan is only advice until you know whether it worked. Open a build in the Arch
 focus, city philosophy, posture, map and difficulty, plus victories by type and your
 average winning turn.
 
+To see the Stats view with something in it before you've logged any games:
+
+```bash
+python -m backend.demo_data                          # 40 invented builds in data/demo.db
+DB_PATH=./data/demo.db PORT=8001 python -m backend.run
+```
+
+That's a separate database on a separate port, so your real archive is untouched — the
+script refuses to write into the database the app is configured to use.
+
 Every rate is shown next to the record it came from (`3–1 (75%)`, not `75%`), and under
 five decided games the view says so. With a handful of games a bare percentage invites
 reading a trend into a coin flip.
