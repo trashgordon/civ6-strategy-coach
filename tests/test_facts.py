@@ -45,7 +45,9 @@ def installed_facts(tmp_path, monkeypatch):
             ]
         )
     )
-    (directory / "eras.json").write_text(json.dumps(["Classical Era", "Medieval Era"]))
+    (directory / "eras.json").write_text(
+        json.dumps(["Classical Era", "Medieval Era", "Industrial Era", "Atomic Era"])
+    )
     (directory / "units.json").write_text(json.dumps(["Great Scientist"]))
     (directory / "governments.json").write_text(json.dumps(["Monarchy"]))
 
@@ -499,3 +501,26 @@ def test_truncation_forgiveness_does_not_excuse_invented_phrases(installed_facts
     (installed_facts / "technologies.json").write_text(json.dumps(["Horseback Riding"]))
     facts.reload()
     assert facts.unverified_names("**Horseback Archery**") == ["Horseback Archery"]
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "**If Normal/Dark Age:**",               # leading condition
+        "**During Golden Age:**",
+        "**Industrial/Atomic Golden Age:**",     # era-qualified age label
+        "**Scientific and Religious**",          # categories joined by "and"
+    ],
+)
+def test_labels_from_the_second_eval_run_are_not_fabrications(installed_facts, label):
+    """Every one of these flagged on a real eval plan and would have shown ⚠ in the UI."""
+    assert facts.unverified_names(f"## Dedications\n- {label} something\n") == []
+
+
+def test_and_splitting_still_catches_an_invented_half(installed_facts):
+    assert facts.unverified_names("**Writing and Fakeium**") == ["Fakeium"]
+
+
+def test_a_name_containing_and_still_matches_whole(installed_facts):
+    """Games and Recreation must not be split into "Games" and "Recreation"."""
+    assert facts.unverified_names("**Games and Recreation**") == []

@@ -403,7 +403,13 @@ _CIV_LEADER_SECTION = re.compile(
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _CHAIN = re.compile(r"\s*(?:→|->|➜|»)\s*")
 # Commas and slashes both introduce lists: "Irrigation, Mining", "Amsterdam/Venice".
-_LIST_SEPARATOR = re.compile(r"\s*[,/–]\s*")
+_LIST_SEPARATOR = re.compile(r"\s*[,/–]\s*|\s+and\s+")
+
+# Labels open with a condition — "**If Normal/Dark Age:**", "**During Golden Age:**".
+_LEADING_CONDITION = re.compile(r"^(?:if|when|during|in|for|once|after|before)\s+", re.I)
+
+# "Atomic Golden Age": an era qualifying an age label. Checked as the era alone.
+_AGE_SUFFIX = re.compile(r"\s+(?:golden|dark|normal|heroic)\s+age$", re.I)
 _NAME_PARTICLES = {"and", "of", "the", "&"}
 
 
@@ -456,6 +462,10 @@ _POSSESSIVE = re.compile(r"['\u2019]s\s+")
 def _recognised(term: str, known: frozenset[str], allow_containment: bool = True) -> bool:
     if _variants(term) & known:
         return True
+    # "Atomic Golden Age" is the Atomic era plus an age label.
+    stripped = _AGE_SUFFIX.sub("", term.strip())
+    if stripped != term.strip() and stripped and _variants(stripped) & known:
+        return True
     # A lone word that opens a real multi-word name is a shortened mention.
     if " " not in term.strip() and _fold(term.strip()) in _leading_words():
         return True
@@ -483,6 +493,7 @@ def _checkable_terms(piece: str, known: frozenset[str]) -> list[str]:
     fabrication hiding inside a list is still caught, without splitting real names apart.
     """
     term = piece.strip(" .,;:—–-*()").strip()
+    term = _LEADING_CONDITION.sub("", term).strip()
     if not term:
         return []
 
