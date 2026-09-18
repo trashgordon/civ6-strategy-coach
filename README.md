@@ -266,6 +266,38 @@ dropdowns (never "No preference" — a randomiser that shrugs isn't a surprise),
 ticked, and every saved build has a **campaign journal** for notes as the game actually
 plays out.
 
+## Evals
+
+Every prompt change used to be checked by generating a plan or two and reading them.
+`evals/` replaces that with a number:
+
+```bash
+python -m evals.run --dry-run     # the briefs, and roughly what a run costs
+python -m evals.run               # run them (asks before spending, ~$0.30)
+python -m evals.run --rescore     # re-apply changed scoring to the last run, free
+```
+
+It sends six fixed briefs (`evals/briefs.json`) through exactly the path the app uses —
+each chosen because it once produced a specific error — and scores every plan with
+deterministic checks: all twelve headers verbatim, within the word cap, 5–8 Playbook
+steps, turn numbers in the benchmarks, real city-states and governor promotions named,
+dedications covering Normal and Dark ages, no unverified names, and none of the
+**known-wrong claims** the coach has been caught making before (Corvée as a settler card,
+Research Agreements, the Physics tech, Ballista…). A suite check confirms Marathon
+benchmarks actually scale against Standard ones.
+
+No model grades another model: every check is a rule you could apply by hand, so a
+score means the same thing next week. Expected headers and the word cap are read from
+the live prompt, so the eval can't drift from what it's checking. Each run is saved
+under `data/evals/` and compared against the last one, with a note of what changed —
+model, prompt, grounding, or briefs.
+
+When the coach gets caught in a new mistake, add it to `KNOWN_WRONG` in
+`evals/scoring.py`. That's how a fix stays fixed.
+
+The first cold call warms the prompt cache before the rest run in parallel, and spend
+is logged to your usage totals as `eval`.
+
 ## Development
 
 ```bash

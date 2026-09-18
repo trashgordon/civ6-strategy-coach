@@ -9,16 +9,13 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, config, db, facts, llm, prompts, summarize, titles
+from . import auth, config, db, facts, generation, llm, prompts, summarize, titles
 
 log = logging.getLogger("civ6")
 
-# The prompts cap the prose at ~700 and ~400 words (roughly 1000 and 550 tokens), but a
-# reasoning model spends tokens thinking before it writes any of that. Measured on Claude
-# Sonnet 5 at REASONING_EFFORT=low: a ~1100-word plan lands around 2,900 output tokens.
-# These caps leave room for that without going so high that a non-streaming request risks
-# an HTTP timeout — a 16,000-token attempt disconnected mid-call.
-MAX_PLAN_TOKENS = 6000
+# The compare writeup is capped at ~400 words; see generation.py for why the caps sit
+# well above the prose length on a reasoning model.
+MAX_PLAN_TOKENS = generation.MAX_PLAN_TOKENS
 MAX_COMPARE_TOKENS = 2500
 
 
@@ -187,20 +184,14 @@ def logout(response: Response) -> dict[str, Any]:
 @app.post("/api/generate", dependencies=[Depends(require_auth)])
 async def generate(payload: GenerateRequest) -> dict[str, Any]:
     """Generate a build plan and save it. Every generated build auto-saves."""
-    user_prompt = prompts.build_user_prompt(
-        config=payload.config,
-        civ=payload.civ,
-        city_philosophy=payload.city_philosophy,
-        primary_focus=payload.primary_focus,
-        posture=payload.posture,
-        playstyle_text=payload.playstyle_text,
-    )
-
     try:
-        result = await llm.complete(
-            prompts.build_system_prompt(facts.prompt_block()),
-            user_prompt,
-            max_tokens=MAX_PLAN_TOKENS,
+        result = await generation.draft_plan(
+            config=payload.config,
+            civ=payload.civ,
+            city_philosophy=payload.city_philosophy,
+            primary_focus=payload.primary_focus,
+            posture=payload.posture,
+            playstyle_text=payload.playstyle_text,
         )
     except llm.LLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

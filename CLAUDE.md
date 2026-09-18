@@ -26,5 +26,11 @@ the extractor, never the data). `backend/facts.py` feeds those names into the pr
 checks generated plans against them. Every part of this must degrade to a silent no-op
 when `data/facts/` is absent.
 
+## Evals
+Measure prompt and grounding changes with `python -m evals.run` (costs ~$0.30; say so
+before running) rather than by reading one or two plans. Scoring changes don't need a
+new run — `--rescore` re-applies them to the last run's saved plans. New mistakes the
+coach makes go into `KNOWN_WRONG` in `evals/scoring.py`.
+
 ## Voice
 Both system prompts (build generation and compare/contrast) live verbatim in the brief — reuse them as-is rather than rewriting the coach's voice from scratch.

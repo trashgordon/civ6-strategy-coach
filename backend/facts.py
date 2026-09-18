@@ -62,6 +62,8 @@ _ALLOWED = {
     "cultural", "industrial", "militaristic", "religious", "scientific", "trade",
     "cultural city-state", "industrial city-state", "militaristic city-state",
     "religious city-state", "scientific city-state", "trade city-state",
+    # Age labels — "**Normal/Dark Age:**" splits into a bare "Normal".
+    "golden", "normal", "dark", "heroic", "age", "ages",
     # Imperatives the coach bolds to open a bullet.
     "ignore", "skip", "rush", "grab", "take", "build", "buy", "watch", "stop",
     "pivot", "avoid", "prioritise", "prioritize", "beeline", "settle", "expand",
@@ -156,6 +158,7 @@ def reload() -> None:
     _load.cache_clear()
     _known_names.cache_clear()
     _proper_nouns.cache_clear()
+    _leading_words.cache_clear()
     city_states.cache_clear()
     effects.cache_clear()
     dedication_bonuses.cache_clear()
@@ -241,6 +244,8 @@ def _known_names() -> frozenset[str]:
             names |= _variants(value)
     for civ in CIVS:
         names |= _variants(civ)
+    for belief_class in data.get("belief_classes", ()):
+        names |= _variants(f"{belief_class} belief")
     for kit in governor_kits():
         names |= _variants(kit["governor"])
         for promo in kit.get("promotions", []):
@@ -338,6 +343,24 @@ def prompt_block(max_names_per_category: int = 400) -> str:
     return "\n".join(lines).strip()
 
 
+@lru_cache(maxsize=1)
+def _leading_words() -> frozenset[str]:
+    """First words of real multi-word names: "horseback" from "Horseback Riding".
+
+    A second mention often shortens the name — "Currency → Horseback". That's a
+    truncation, not an invention, and flagging it as "not found in your game data"
+    would cry wolf about a real tech.
+    """
+    words: set[str] = set()
+    data = _load()
+    for category in [c for c, _ in INJECT_CATEGORIES] + list(_VALIDATE_ONLY):
+        for value in data.get(category, ()):
+            parts = _fold(value).split()
+            if len(parts) > 1 and len(parts[0]) >= 5:
+                words.add(parts[0])
+    return frozenset(words)
+
+
 # People and places get written loosely: "Kupe of Maori", "Kongo's Mvemba", "Eleanor of
 # Aquitaine" when the data disambiguates it as "Eleanor of Aquitaine (England)". Matching
 # these by containment rather than equality is safe, because it can only ever suppress a
@@ -380,7 +403,7 @@ _CIV_LEADER_SECTION = re.compile(
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _CHAIN = re.compile(r"\s*(?:→|->|➜|»)\s*")
 # Commas and slashes both introduce lists: "Irrigation, Mining", "Amsterdam/Venice".
-_LIST_SEPARATOR = re.compile(r"\s*[,/]\s*")
+_LIST_SEPARATOR = re.compile(r"\s*[,/–]\s*")
 _NAME_PARTICLES = {"and", "of", "the", "&"}
 
 
@@ -432,6 +455,9 @@ _POSSESSIVE = re.compile(r"['\u2019]s\s+")
 
 def _recognised(term: str, known: frozenset[str], allow_containment: bool = True) -> bool:
     if _variants(term) & known:
+        return True
+    # A lone word that opens a real multi-word name is a shortened mention.
+    if " " not in term.strip() and _fold(term.strip()) in _leading_words():
         return True
     if _POSSESSIVE.search(term):
         # Either side of the apostrophe may be the real name.

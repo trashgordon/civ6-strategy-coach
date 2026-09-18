@@ -1,0 +1,54 @@
+{
+  "_about": "Fixed inputs for the eval harness. Change these rarely: a run is only comparable to earlier runs made on the same briefs. Each brief notes the failure it was chosen to exercise.",
+  "base_config": {
+    "ruleset": "Gathering Storm", "difficulty": "Prince", "gameSpeed": "Standard",
+    "mapType": "Pangaea", "mapSize": "Standard", "cityStates": 12, "disasterIntensity": 2,
+    "resources": "Abundant", "worldAge": "New", "startPosition": "Legendary",
+    "temperature": "Standard", "rainfall": "Wet", "seaLevel": "Standard",
+    "modes": {"monopolies": true, "sukritactOceans": true}
+  },
+  "briefs": [
+    {
+      "id": "science-tall-korea",
+      "why": "The most-tested build. Baseline for everything; Physics/Research Agreements leaked here.",
+      "civ": "Korea", "city_philosophy": "Tall", "primary_focus": "Science",
+      "posture": "Introverted / peaceful",
+      "playstyle_text": "Three cities, all Seowons, science win."
+    },
+    {
+      "id": "domination-wide",
+      "why": "Where Corvée was repeatedly described as a settler/builder card.",
+      "civ": "", "city_philosophy": "Wide", "primary_focus": "Domination",
+      "posture": "Aggressive / militaristic",
+      "playstyle_text": "Sprawl wide and conquer my neighbours."
+    },
+    {
+      "id": "culture-tall",
+      "why": "Produced 'Dramatic Arts' and 'Hearts and Minds', neither of which exist.",
+      "civ": "", "city_philosophy": "Tall", "primary_focus": "Culture",
+      "posture": "Introverted / peaceful",
+      "playstyle_text": "A handful of cities built tall, lots of wonders, cultural victory, no wars."
+    },
+    {
+      "id": "diplomacy-wide",
+      "why": "Leans on city-states and alliances — where 'Research Agreements' came from.",
+      "civ": "", "city_philosophy": "Wide", "primary_focus": "Diplomacy",
+      "posture": "No preference",
+      "playstyle_text": "Win on diplomatic points, buy every city-state I can."
+    },
+    {
+      "id": "religion-minimal",
+      "why": "Minimal input — no civ, no posture, no freeform — which is how most real briefings arrive.",
+      "civ": "", "city_philosophy": "No preference", "primary_focus": "Religion",
+      "posture": "No preference", "playstyle_text": ""
+    },
+    {
+      "id": "science-marathon-korea",
+      "why": "Same as the baseline at Marathon speed: benchmark turns must scale, not quote Standard numbers.",
+      "civ": "Korea", "city_philosophy": "Tall", "primary_focus": "Science",
+      "posture": "Introverted / peaceful",
+      "playstyle_text": "Three cities, all Seowons, science win.",
+      "config": {"gameSpeed": "Marathon"}
+    }
+  ]
+}

@@ -462,3 +462,40 @@ def test_alliance_types_are_grounded(installed_facts):
 
 def test_governor_facts_are_optional(no_facts):
     assert facts.governor_kits() == ()
+
+
+# ------------------------------------------ labels and truncations the eval surfaced
+
+
+def test_age_labels_are_not_fabrications(installed_facts):
+    """"**Normal/Dark Age:**" split into bare "Normal" and was flagged in the UI."""
+    assert facts.unverified_names("**Normal/Dark Age:** farm era score") == []
+    assert facts.unverified_names("**Golden**") == []
+
+
+def test_era_ranges_are_checked_as_their_endpoints(installed_facts):
+    assert facts.unverified_names("**Classical–Medieval, Golden Age:** Free Inquiry") == []
+    assert facts.unverified_names("**Classical–Fakeium**") == ["Fakeium"]
+
+
+def test_a_belief_class_label_is_not_a_fabrication(installed_facts):
+    (installed_facts / "belief_classes.json").write_text(json.dumps(["Founder", "Follower"]))
+    facts.reload()
+    assert facts.unverified_names("**Founder Belief:** Religious Unity") == []
+    assert facts.unverified_names("**Follower Beliefs**") == []
+
+
+def test_a_shortened_second_mention_of_a_real_name_passes(installed_facts):
+    """"**Currency → Horseback**" — Horseback Riding, shortened. Not an invention."""
+    (installed_facts / "technologies.json").write_text(
+        json.dumps(["Bronze Working", "Writing", "Horseback Riding", "Currency"])
+    )
+    facts.reload()
+    assert facts.unverified_names("**Currency → Horseback**") == []
+
+
+def test_truncation_forgiveness_does_not_excuse_invented_phrases(installed_facts):
+    """Only a lone first word gets the benefit of the doubt, not a new phrase."""
+    (installed_facts / "technologies.json").write_text(json.dumps(["Horseback Riding"]))
+    facts.reload()
+    assert facts.unverified_names("**Horseback Archery**") == ["Horseback Archery"]
