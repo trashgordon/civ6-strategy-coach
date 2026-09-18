@@ -1,8 +1,10 @@
-// The plan comes back as markdown. This is a deliberately small renderer covering what
-// the coach's prompt actually allows: headers, bullets, numbered lists, bold, italics,
-// rules, and simple tables (a city-by-city layout or era-by-era cards reads far better
-// as a table than as prose).
-import { T, SERIF, SANS } from "./theme";
+// The plan arrives as markdown. Two layouts:
+//   "flow"     — one continuous column (the compare writeup)
+//   "sections" — each "##" section as its own card, with the section-specific
+//                treatments: yield chips, a turn track, a tickable Playbook.
+import { useEffect, useState } from "react";
+import { DISPLAY, SANS, T } from "./theme";
+import { YieldChip } from "./components/ui";
 
 function renderInline(text, keyBase) {
   // Bold first, then italics inside each non-bold run, so **bold** never gets eaten by
@@ -11,15 +13,13 @@ function renderInline(text, keyBase) {
   return boldParts.flatMap((part, i) => {
     if (i % 2 === 1) {
       return [
-        <strong key={`${keyBase}-b${i}`} style={{ color: T.brass }}>
+        <strong key={`${keyBase}-b${i}`} style={{ color: T.text, fontWeight: 600 }}>
           {part}
         </strong>,
       ];
     }
     return part.split(/(?<!\*)\*([^*\n]+)\*(?!\*)/g).map((piece, j) =>
-      j % 2 === 1 ? (
-        <em key={`${keyBase}-i${i}-${j}`}>{piece}</em>
-      ) : (
+      j % 2 === 1 ? <em key={`${keyBase}-i${i}-${j}`}>{piece}</em> : (
         <span key={`${keyBase}-t${i}-${j}`}>{piece}</span>
       )
     );
@@ -35,14 +35,10 @@ function parseCells(line) {
   return s.split("|").map((c) => c.trim());
 }
 
-// The |---|:--:|---| line under a header row. Never confused with a --- rule, because
-// that has no pipes and is handled before we get here.
-const isSeparatorRow = (cells) =>
-  cells.length > 0 && cells.every((c) => /^:?-{1,}:?$/.test(c));
+const isSeparatorRow = (cells) => cells.length > 0 && cells.every((c) => /^:?-{1,}:?$/.test(c));
 
-export function Markdown({ text }) {
-  if (!text) return null;
-
+// The block renderer: headers, lists, paragraphs, rules, tables.
+function renderBlocks(text, prefix = "b") {
   const blocks = [];
   let listBuffer = [];
   let listType = null;
@@ -51,17 +47,10 @@ export function Markdown({ text }) {
 
   function flushPara() {
     if (!paraBuffer.length) return;
-    const joined = paraBuffer.join(" ");
-    const key = `para-${blocks.length}`;
+    const key = `${prefix}-p${blocks.length}`;
     blocks.push(
-      <p
-        key={key}
-        style={{
-          fontFamily: SANS, color: T.parchmentDim, lineHeight: 1.7,
-          margin: "0 0 0.75rem",
-        }}
-      >
-        {renderInline(joined, key)}
+      <p key={key} style={{ fontFamily: SANS, color: T.text, lineHeight: 1.6, margin: "0 0 0.6rem" }}>
+        {renderInline(paraBuffer.join(" "), key)}
       </p>
     );
     paraBuffer = [];
@@ -70,18 +59,11 @@ export function Markdown({ text }) {
   function flushList() {
     if (!listBuffer.length) return;
     const Tag = listType === "ol" ? "ol" : "ul";
-    const key = `list-${blocks.length}`;
+    const key = `${prefix}-l${blocks.length}`;
     blocks.push(
-      <Tag
-        key={key}
-        style={{
-          margin: "0.5rem 0 1rem 0", paddingLeft: "1.25rem",
-          listStyleType: listType === "ol" ? "decimal" : "disc",
-          color: T.parchment,
-        }}
-      >
+      <Tag key={key} style={{ margin: "0.3rem 0 0.7rem", paddingLeft: "1.2rem", color: T.text }}>
         {listBuffer.map((item, i) => (
-          <li key={i} style={{ marginBottom: "0.35rem", lineHeight: 1.6 }}>
+          <li key={i} style={{ marginBottom: "0.3rem", lineHeight: 1.55 }}>
             {renderInline(item, `${key}-${i}`)}
           </li>
         ))}
@@ -93,53 +75,34 @@ export function Markdown({ text }) {
 
   function flushTable() {
     if (!tableBuffer.length) return;
-    const key = `table-${blocks.length}`;
+    const key = `${prefix}-t${blocks.length}`;
     const rows = tableBuffer.map(parseCells);
     tableBuffer = [];
-
     let header = null;
     let body = rows;
     if (rows.length > 1 && isSeparatorRow(rows[1])) {
       header = rows[0];
       body = rows.slice(2);
     }
-    // Drop any stray separator rows the model emitted mid-table.
     body = body.filter((cells) => !isSeparatorRow(cells));
     if (!header && !body.length) return;
-
     const cell = {
-      padding: "0.45rem 0.7rem",
-      borderBottom: `1px solid ${T.border}`,
-      fontSize: "0.85rem",
-      lineHeight: 1.55,
-      textAlign: "left",
-      verticalAlign: "top",
-      color: T.parchment,
+      padding: "0.45rem 0.6rem", borderBottom: `1px solid ${T.line}`, fontSize: "0.88rem",
+      lineHeight: 1.5, textAlign: "left", verticalAlign: "top", color: T.text,
     };
-
     blocks.push(
-      // Wide layout tables must scroll inside the dossier, not stretch the page.
-      <div key={key} style={{ overflowX: "auto", margin: "0.75rem 0 1.25rem" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "22rem" }}>
+      <div key={key} style={{ overflowX: "auto", margin: "0.5rem 0 0.9rem" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "20rem" }}>
           {header && (
             <thead>
               <tr>
-                {header.map((text, i) => (
-                  <th
-                    key={i}
-                    scope="col"
-                    style={{
-                      ...cell,
-                      color: T.parchmentDim,
-                      fontSize: "0.72rem",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.04em",
-                      borderBottom: `1px solid ${T.brassDim}`,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {renderInline(text, `${key}-h${i}`)}
+                {header.map((h, i) => (
+                  <th key={i} scope="col" style={{
+                    ...cell, fontFamily: DISPLAY, fontWeight: 600, fontSize: "0.72rem",
+                    textTransform: "uppercase", letterSpacing: "0.07em", color: T.muted,
+                    borderBottom: `1px solid ${T.accent}`, whiteSpace: "nowrap",
+                  }}>
+                    {renderInline(h, `${key}-h${i}`)}
                   </th>
                 ))}
               </tr>
@@ -148,16 +111,9 @@ export function Markdown({ text }) {
           <tbody>
             {body.map((cells, r) => (
               <tr key={r}>
-                {cells.map((text, ci) => (
-                  <td
-                    key={ci}
-                    style={{
-                      ...cell,
-                      // The first column is the row's label — give it the brass accent.
-                      color: ci === 0 && header ? T.brass : T.parchment,
-                    }}
-                  >
-                    {renderInline(text, `${key}-${r}-${ci}`)}
+                {cells.map((c, ci) => (
+                  <td key={ci} style={{ ...cell, fontWeight: ci === 0 && header ? 600 : 400 }}>
+                    {renderInline(c, `${key}-${r}-${ci}`)}
                   </td>
                 ))}
               </tr>
@@ -168,7 +124,6 @@ export function Markdown({ text }) {
     );
   }
 
-  // Close whatever is open, in the order things can nest.
   function flush() {
     flushPara();
     flushList();
@@ -177,13 +132,10 @@ export function Markdown({ text }) {
 
   text.split("\n").forEach((raw, idx) => {
     const trimmed = raw.trim();
-
     if (!trimmed) {
       flush();
       return;
     }
-
-    // Table rows accumulate until something that isn't one.
     if (isTableLine(trimmed)) {
       flushPara();
       flushList();
@@ -194,60 +146,24 @@ export function Markdown({ text }) {
 
     if (/^-{3,}$/.test(trimmed)) {
       flush();
-      blocks.push(
-        <div
-          key={`hr-${idx}`}
-          style={{ borderTop: `1px solid ${T.border}`, margin: "1.25rem 0" }}
-        />
-      );
+      blocks.push(<div key={`${prefix}-hr${idx}`} style={{ borderTop: `1px solid ${T.line}`, margin: "1rem 0" }} />);
       return;
     }
 
-    const h3 = trimmed.match(/^###\s+(.*)/);
-    const h2 = trimmed.match(/^##\s+(.*)/);
-    const h1 = trimmed.match(/^#\s+(.*)/);
+    const heading = trimmed.match(/^(#{1,3})\s+(.*)/);
     const ol = trimmed.match(/^\d+\.\s+(.*)/);
     const ul = trimmed.match(/^[-*]\s+(.*)/);
 
-    if (h3) {
+    if (heading) {
       flush();
+      const level = heading[1].length;
       blocks.push(
-        <h3
-          key={idx}
-          style={{
-            fontFamily: SANS, color: T.parchment, fontSize: "1.05rem",
-            fontWeight: 600, margin: "1rem 0 0.35rem",
-          }}
-        >
-          {renderInline(h3[1], `h3-${idx}`)}
+        <h3 key={`${prefix}-h${idx}`} style={{
+          fontFamily: DISPLAY, fontWeight: 700, color: T.text, margin: "1rem 0 0.4rem",
+          fontSize: level === 3 ? "0.98rem" : "1.1rem",
+        }}>
+          {renderInline(heading[2], `${prefix}-h${idx}`)}
         </h3>
-      );
-    } else if (h2) {
-      flush();
-      blocks.push(
-        <h2
-          key={idx}
-          style={{
-            fontFamily: SERIF, color: T.brass, fontSize: "1.2rem",
-            margin: "1.5rem 0 0.6rem",
-            borderBottom: `1px solid ${T.border}`, paddingBottom: "0.35rem",
-          }}
-        >
-          {renderInline(h2[1], `h2-${idx}`)}
-        </h2>
-      );
-    } else if (h1) {
-      flush();
-      blocks.push(
-        <h1
-          key={idx}
-          style={{
-            fontFamily: SERIF, color: T.parchment, fontSize: "1.5rem",
-            margin: "1.5rem 0 0.5rem",
-          }}
-        >
-          {renderInline(h1[1], `h1-${idx}`)}
-        </h1>
       );
     } else if (ol) {
       flushPara();
@@ -266,5 +182,191 @@ export function Markdown({ text }) {
   });
 
   flush();
-  return <>{blocks}</>;
+  return blocks;
+}
+
+// ------------------------------------------------------------------ sections
+
+// Chips only where the link is true: techs drive science, civics culture, religion faith.
+const SECTION_YIELDS = {
+  "Tech Path": { yieldKey: "science", label: "Science" },
+  "Civic Path": { yieldKey: "culture", label: "Culture" },
+  "Religious Beliefs": { yieldKey: "faith", label: "Faith" },
+};
+
+function splitSections(text) {
+  const sections = [];
+  let current = { title: null, body: [] };
+  text.split("\n").forEach((line) => {
+    const m = line.trim().match(/^##\s+(.+?)\s*$/);
+    if (m) {
+      if (current.title || current.body.join("").trim()) sections.push(current);
+      current = { title: m[1], body: [] };
+    } else {
+      current.body.push(line);
+    }
+  });
+  if (current.title || current.body.join("").trim()) sections.push(current);
+  return sections.map((s) => ({ title: s.title, body: s.body.join("\n").trim() }));
+}
+
+function listItems(body) {
+  return body
+    .split("\n")
+    .map((l) => l.trim().match(/^(?:[-*]|\d+[.)])\s+(.*)/))
+    .filter(Boolean)
+    .map((m) => m[1]);
+}
+
+const TURN = /\b(?:T|[Tt]urns?\s*~?)\s*(\d{2,4})/;
+
+// Benchmarks drawn to scale on one axis. The full text stays in the list below; the
+// track exists so "am I on pace?" is answerable at a glance.
+function TurnTrack({ body }) {
+  const points = listItems(body)
+    // "Off-pace if you're not suzerain by T100" is a warning, not a milestone.
+    .filter((item) => !/off[- ]pace|behind|if you('re| are)? not/i.test(item))
+    .map((item) => {
+      const m = item.match(TURN);
+      return m ? Number(m[1]) : null;
+    })
+    .filter((n) => n !== null)
+    .sort((a, b) => a - b);
+  if (points.length < 2) return null;
+
+  const end = Math.ceil((points[points.length - 1] * 1.08) / 10) * 10;
+  let lastPos = -100;
+  let lastRow = 1;
+  const ticks = points.map((turn) => {
+    const pos = (turn / end) * 100;
+    // Stagger labels that would sit on top of each other.
+    const row = pos - lastPos < 7 ? 1 - lastRow : 0;
+    lastPos = pos;
+    lastRow = row;
+    return { turn, pos, row };
+  });
+
+  return (
+    <div aria-hidden="true" style={{ position: "relative", height: "3.4rem", margin: "0.4rem 0.5rem 0.9rem" }}>
+      <div style={{ position: "absolute", left: 0, right: 0, top: "0.55rem", height: "4px", borderRadius: "2px", background: T.raised }} />
+      {ticks.map((t) => (
+        <div key={t.turn} style={{
+          position: "absolute", left: `${t.pos}%`, top: 0, transform: "translateX(-50%)",
+          display: "grid", justifyItems: "center",
+        }}>
+          <i style={{ display: "block", width: "12px", height: "12px", borderRadius: "50%", marginTop: "0.25rem",
+            background: T.panel, border: `2px solid ${T.accent}` }} />
+          <span style={{
+            fontSize: "0.72rem", color: T.muted, fontVariantNumeric: "tabular-nums",
+            marginTop: t.row ? "1.15rem" : "0.2rem", whiteSpace: "nowrap",
+          }}>
+            T{t.turn}
+          </span>
+        </div>
+      ))}
+      <span style={{ position: "absolute", right: 0, top: "-0.15rem", fontSize: "0.66rem", color: T.muted }}>
+        T{end}
+      </span>
+    </div>
+  );
+}
+
+function loadChecked(key) {
+  if (!key) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// The Playbook as a checklist. Ticks are remembered per build in this browser —
+// they're a mid-game convenience, not something worth a server round-trip.
+function Playbook({ body, buildId }) {
+  const items = listItems(body);
+  const key = buildId ? `playbook:${buildId}` : null;
+  const [done, setDone] = useState(() => loadChecked(key));
+
+  useEffect(() => {
+    setDone(loadChecked(key));
+  }, [key]);
+
+  if (!items.length) return renderBlocks(body, "pb");
+
+  function toggle(i) {
+    setDone((prev) => {
+      const next = prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i];
+      try {
+        if (key) localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // Storage blocked — ticks still work for this session.
+      }
+      return next;
+    });
+  }
+
+  return (
+    <ul className="steps">
+      {items.map((item, i) => {
+        const id = `step-${buildId ?? "new"}-${i}`;
+        return (
+          <li key={i}>
+            <label htmlFor={id}>
+              <input type="checkbox" id={id} checked={done.includes(i)} onChange={() => toggle(i)} />
+              <span>{renderInline(item, id)}</span>
+            </label>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function SectionCard({ title, body, buildId }) {
+  const chip = SECTION_YIELDS[title];
+  const isWarning = title === "What Goes Wrong";
+  const isPlaybook = title === "The Playbook";
+  const steps = isPlaybook ? listItems(body).length : 0;
+
+  return (
+    <section
+      style={{
+        background: T.panel,
+        border: `1px solid ${T.line}`,
+        // A severity stripe marks the one section about failure.
+        borderLeft: isWarning ? `3px solid ${T.warn}` : `1px solid ${T.line}`,
+        borderRadius: "8px",
+        padding: "0.9rem 1rem 0.5rem",
+      }}
+    >
+      {title && (
+        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.6rem", marginBottom: "0.35rem" }}>
+          <h3 style={{
+            fontFamily: DISPLAY, fontWeight: 700, fontSize: "1.02rem", margin: 0,
+            color: isWarning ? T.warn : T.text, letterSpacing: "0.01em",
+          }}>
+            {title}
+          </h3>
+          {chip && <YieldChip yieldKey={chip.yieldKey}>{chip.label}</YieldChip>}
+          {isPlaybook && steps > 0 && <YieldChip yieldKey="accent">{steps} steps</YieldChip>}
+        </header>
+      )}
+      {title === "Timing Benchmarks" && <TurnTrack body={body} />}
+      {isPlaybook ? <Playbook body={body} buildId={buildId} /> : renderBlocks(body, title || "intro")}
+    </section>
+  );
+}
+
+export function Markdown({ text, layout = "flow", buildId }) {
+  if (!text) return null;
+  if (layout !== "sections") return <>{renderBlocks(text)}</>;
+  return (
+    <div style={{ display: "grid", gap: "0.75rem" }}>
+      {splitSections(text).map((s, i) => (
+        <SectionCard key={`${s.title}-${i}`} title={s.title} body={s.body} buildId={buildId} />
+      ))}
+    </div>
+  );
 }

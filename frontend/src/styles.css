@@ -1,40 +1,106 @@
+/* Dark is the default. Light applies when the OS prefers it and the user hasn't picked
+   dark, or when the user picks light explicitly. Tokens are declared in full in :root
+   first, so no colour exists only behind a media query or theme attribute. */
 :root {
-  --bg: #101a28;
-  --bg-hero: #0b141f;
-  --panel: #152233;
-  --panel-alt: #1b2c40;
-  --border: #2a3e54;
-  --brass: #c7a542;
-  --brass-dim: #8b7a48;
-  --parchment: #ece4ce;
-  --parchment-dim: #a9a08a;
-  --rust: #a6522e;
+  --ground: #14161b;
+  --bar: #101216;
+  --panel: #1c1f26;
+  --raised: #242933;
+  --line: #2e3440;
+  --text: #e6e9ee;
+  --muted: #8a93a3;
+  --accent: #35c0b2;
+  --on-accent: #06221f;
+  --accent-soft: rgba(53, 192, 178, 0.14);
+  --warn: #f0a43a;
+  --warn-soft: rgba(240, 164, 58, 0.11);
+  --danger: #f07a6a;
+  --danger-soft: rgba(240, 122, 106, 0.12);
+  --ok: #79c267;
+  --y-science: #58a6e6;
+  --y-culture: #b68be0;
+  --y-faith: #d7dce3;
+  --y-gold: #e3be4c;
+  --y-production: #e28a3a;
+  --scroll: #2e3440;
   color-scheme: dark;
 }
 
-* { box-sizing: border-box; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #eef1f4;
+    --bar: #ffffff;
+    --panel: #ffffff;
+    --raised: #f2f4f7;
+    --line: #d8dde4;
+    --text: #151a21;
+    --muted: #5b6576;
+    --accent: #0b7f75;
+    --on-accent: #ffffff;
+    --accent-soft: rgba(11, 127, 117, 0.11);
+    --warn: #a85800;
+    --warn-soft: rgba(168, 88, 0, 0.09);
+    --danger: #b3261e;
+    --danger-soft: rgba(179, 38, 30, 0.08);
+    --ok: #2e7d32;
+    --y-science: #1f6fb2;
+    --y-culture: #7a48b0;
+    --y-faith: #55606f;
+    --y-gold: #8f6a00;
+    --y-production: #a8500f;
+    --scroll: #c5ccd6;
+    color-scheme: light;
+  }
+}
 
+:root[data-theme="light"] {
+  --ground: #eef1f4;
+  --bar: #ffffff;
+  --panel: #ffffff;
+  --raised: #f2f4f7;
+  --line: #d8dde4;
+  --text: #151a21;
+  --muted: #5b6576;
+  --accent: #0b7f75;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(11, 127, 117, 0.11);
+  --warn: #a85800;
+  --warn-soft: rgba(168, 88, 0, 0.09);
+  --danger: #b3261e;
+  --danger-soft: rgba(179, 38, 30, 0.08);
+  --ok: #2e7d32;
+  --y-science: #1f6fb2;
+  --y-culture: #7a48b0;
+  --y-faith: #55606f;
+  --y-gold: #8f6a00;
+  --y-production: #a8500f;
+  --scroll: #c5ccd6;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--parchment);
-  font-family: "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--ground);
+  color: var(--text);
+  font-family: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
 }
 
-select, input, textarea, button { font: inherit; }
+select, input, textarea, button { font: inherit; color: inherit; }
 
 select:focus-visible,
 textarea:focus-visible,
 input:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--brass);
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* The pulsing ellipsis under "the coach is studying the board". */
 @keyframes pulse-dot {
   0%, 80%, 100% { opacity: 0.25; }
   40% { opacity: 1; }
@@ -42,20 +108,16 @@ button:focus-visible {
 .dot { display: inline-block; animation: pulse-dot 1.4s infinite; }
 .dot:nth-of-type(2) { animation-delay: 0.2s; }
 .dot:nth-of-type(3) { animation-delay: 0.4s; }
+@media (prefers-reduced-motion: reduce) { .dot { animation: none; opacity: 1; } }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: var(--bg-hero); }
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 5px;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--brass-dim); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 5px; }
 
-/* Two-column briefing layout collapses on narrow screens. */
 .briefing-grid {
   display: grid;
-  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 23rem) minmax(0, 1fr);
+  gap: 1.25rem;
   align-items: start;
 }
 @media (max-width: 62rem) {
@@ -63,3 +125,33 @@ button:focus-visible {
 }
 
 .compare-scroll { overflow-x: auto; }
+
+/* Segmented control: real radio buttons, styled as one strip. */
+.seg { display: grid; background: var(--raised); border-radius: 6px; padding: 3px; gap: 3px; border: 0; margin: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label {
+  text-align: center; font-size: 13px; padding: 6px 4px; border-radius: 4px;
+  color: var(--muted); cursor: pointer; user-select: none; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.seg label:hover { color: var(--text); }
+.seg input:checked + label {
+  background: var(--panel); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent);
+}
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Toggle chips for game modes. */
+.chip-toggle { display: inline-flex; }
+.chip-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.chip-toggle span {
+  font-size: 12.5px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); color: var(--muted); user-select: none;
+}
+.chip-toggle input:checked + span { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.chip-toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Playbook checklist. */
+.steps { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.45rem; }
+.steps label { display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; line-height: 1.5; }
+.steps input { accent-color: var(--accent); margin-top: 0.3rem; flex-shrink: 0; width: 15px; height: 15px; }
+.steps input:checked + span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }

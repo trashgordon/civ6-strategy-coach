@@ -449,13 +449,9 @@ export default function Archive({
                   <Select
                     ariaLabel="Result"
                     value={draftOutcome}
-                    options={OUTCOMES.filter((o) => o.value).map((o) => o.label)}
+                    options={OUTCOMES.filter((o) => o.value)}
                     placeholder="Not recorded"
-                    onChange={(label) =>
-                      setDraftOutcome(
-                        (OUTCOMES.find((o) => o.label === label) || {}).value ?? ""
-                      )
-                    }
+                    onChange={setDraftOutcome}
                     style={{ minWidth: "9rem" }}
                   />
                   {draftOutcome === "won" && (
@@ -545,9 +541,9 @@ export default function Archive({
               </div>
             )}
 
-            <div style={{ maxWidth: "44rem" }}>
+            <div>
               <UnverifiedNames names={selected.unverified_names} />
-              <Markdown text={selected.generated_plan} />
+              <Markdown text={selected.generated_plan} layout="sections" buildId={selected.id} />
             </div>
           </article>
         )}

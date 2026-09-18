@@ -1,5 +1,4 @@
-// Config form on the left, the coach's dossier on the right — the prototype's
-// two-column layout, now posting to our own backend.
+// Everything you choose sits in the left column; the plan gets the whole right side.
 import { useState } from "react";
 import { api } from "../api";
 import {
@@ -7,11 +6,42 @@ import {
   POSTURES, PRIMARY_FOCUSES, SETUP_FIELDS, randomBuildStyle,
 } from "../data";
 import { Markdown } from "../markdown";
-import { SERIF, T } from "../theme";
+import { DISPLAY, T } from "../theme";
 import {
-  Button, Empty, ErrorNote, FieldRow, NumberInput, Panel, Select, Thinking,
-  UnverifiedNames, UsageNote,
+  Button, Empty, ErrorNote, FieldLabel, NumberInput, Panel, Segmented, Select, Thinking,
+  ToggleChip, UnverifiedNames, UsageNote,
 } from "../components/ui";
+
+// Short labels for the segmented controls. The values stay the full strings the
+// backend and the prompt expect.
+const PHILOSOPHY_OPTIONS = [
+  { value: "Tall", label: "Tall" },
+  { value: "Wide", label: "Wide" },
+  { value: NO_PREFERENCE, label: "Any", title: "No preference" },
+];
+const FOCUS_OPTIONS = [
+  { value: "Science", label: "Science" },
+  { value: "Culture", label: "Culture" },
+  { value: "Domination", label: "Domination" },
+  { value: "Religion", label: "Religion" },
+  { value: "Diplomacy", label: "Diplomacy" },
+  { value: NO_PREFERENCE, label: "Any", title: "No preference" },
+];
+const POSTURE_OPTIONS = [
+  { value: "Introverted / peaceful", label: "Peaceful" },
+  { value: "Aggressive / militaristic", label: "Aggressive" },
+  { value: NO_PREFERENCE, label: "Any", title: "No preference" },
+];
+
+// The setup most people never change, summarised on one line while collapsed.
+function setupSummary(config) {
+  const on = MODES.filter((m) => config.modes[m.key]).length;
+  return [
+    config.ruleset, config.difficulty, `${config.mapType} · ${config.mapSize}`,
+    `${config.gameSpeed} speed`, `${config.cityStates} city-states`,
+    on ? `${on} mode${on === 1 ? "" : "s"}` : null,
+  ].filter(Boolean).join(" · ");
+}
 
 export default function NewBriefing({ onSaved, onOpenArchive }) {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
@@ -62,77 +92,13 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
     }
   }
 
-  const activeModeCount = Object.values(config.modes).filter(Boolean).length;
+  const [setupOpen, setSetupOpen] = useState(false);
 
   return (
     <div className="briefing-grid">
-      <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <Panel
-          title="Game setup"
-          right={
-            <Button
-              variant="ghost"
-              onClick={() => setConfig(DEFAULT_CONFIG)}
-              style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}
-            >
-              Reset
-            </Button>
-          }
-        >
-          {SETUP_FIELDS.map((field) => (
-            <FieldRow key={field.key} label={field.label}>
-              {field.number ? (
-                <NumberInput
-                  ariaLabel={field.label}
-                  value={config[field.key]}
-                  min={field.number.min}
-                  max={field.number.max}
-                  onChange={(v) => updateConfig(field.key, v)}
-                />
-              ) : (
-                <Select
-                  ariaLabel={field.label}
-                  value={config[field.key]}
-                  options={field.options}
-                  onChange={(v) => updateConfig(field.key, v)}
-                />
-              )}
-            </FieldRow>
-          ))}
-
-          <h3
-            style={{
-              fontFamily: SERIF, color: T.brass, fontSize: "1.05rem",
-              marginTop: "1.5rem", marginBottom: "0.6rem", fontWeight: 400,
-            }}
-          >
-            Game modes {activeModeCount ? `(${activeModeCount} on)` : ""}
-          </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-            {MODES.map((mode) => (
-              <label
-                key={mode.key}
-                style={{
-                  display: "flex", alignItems: "center", gap: "0.5rem",
-                  fontSize: "0.85rem", color: T.parchmentDim, cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={config.modes[mode.key]}
-                  onChange={() => toggleMode(mode.key)}
-                  style={{ accentColor: T.brass }}
-                />
-                {mode.label}
-              </label>
-            ))}
-          </div>
-        </Panel>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-        <Panel
-          title="The build you're after"
+          title="Your build"
           right={
             <Button
               variant="ghost"
@@ -143,139 +109,147 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
             </Button>
           }
         >
-          <FieldRow label="Civilization">
-            <Select
-              ariaLabel="Civilization"
-              value={civ}
-              options={CIVS}
-              placeholder="Coach's pick"
-              onChange={setCiv}
-              style={{ width: "14rem", maxWidth: "100%" }}
-            />
-          </FieldRow>
-          <FieldRow label="City philosophy">
-            <Select
-              ariaLabel="City philosophy"
-              value={cityPhilosophy}
-              options={CITY_PHILOSOPHIES}
-              onChange={setCityPhilosophy}
-              style={{ width: "14rem", maxWidth: "100%" }}
-            />
-          </FieldRow>
-          <FieldRow label="Primary focus">
-            <Select
-              ariaLabel="Primary focus"
-              value={primaryFocus}
-              options={PRIMARY_FOCUSES}
-              onChange={setPrimaryFocus}
-              style={{ width: "14rem", maxWidth: "100%" }}
-            />
-          </FieldRow>
-          <FieldRow label="Posture">
-            <Select
-              ariaLabel="Posture"
-              value={posture}
-              options={POSTURES}
-              onChange={setPosture}
-              style={{ width: "14rem", maxWidth: "100%" }}
-            />
-          </FieldRow>
-
-          <label
-            htmlFor="playstyle"
-            style={{
-              display: "block", fontFamily: SERIF, color: T.brass,
-              fontSize: "1.05rem", marginTop: "1.25rem", marginBottom: "0.5rem",
-            }}
-          >
-            How do you want to play?
-          </label>
-          <textarea
-            id="playstyle"
-            value={playstyle}
-            maxLength={4000}
-            onChange={(e) => setPlaystyle(e.target.value)}
-            placeholder="A vibe, a victory type, a challenge — e.g. 'few cities, big wonders, culture win' or 'go wide and crush people militarily.'"
-            style={{
-              width: "100%", minHeight: "7rem", background: T.panelAlt,
-              color: T.parchment, border: `1px solid ${T.border}`,
-              borderRadius: "3px", padding: "0.65rem", fontSize: "0.9rem",
-              resize: "vertical", lineHeight: 1.5,
-            }}
-          />
-          <p
-            style={{
-              color: T.parchmentDim, fontSize: "0.75rem",
-              margin: "0.5rem 0 0.75rem", lineHeight: 1.5,
-            }}
-          >
-            The dropdowns are coarse hints. If this box disagrees with them, this box wins.
-          </p>
-          <Button onClick={generate} disabled={loading} style={{ width: "100%" }}>
-            {loading ? "Drafting the plan..." : "Draft the strategy"}
-          </Button>
+          <div style={{ display: "grid", gap: "0.95rem" }}>
+            <div>
+              <FieldLabel htmlFor="civ">Civilization</FieldLabel>
+              <Select id="civ" value={civ} options={CIVS} placeholder="Coach's pick" onChange={setCiv} />
+            </div>
+            <div>
+              <FieldLabel>Cities</FieldLabel>
+              <Segmented name="philosophy" ariaLabel="City philosophy" value={cityPhilosophy}
+                options={PHILOSOPHY_OPTIONS} onChange={setCityPhilosophy} />
+            </div>
+            <div>
+              <FieldLabel>Focus</FieldLabel>
+              <Segmented name="focus" ariaLabel="Primary focus" value={primaryFocus}
+                options={FOCUS_OPTIONS} columns={3} onChange={setPrimaryFocus} />
+            </div>
+            <div>
+              <FieldLabel>Posture</FieldLabel>
+              <Segmented name="posture" ariaLabel="Posture" value={posture}
+                options={POSTURE_OPTIONS} onChange={setPosture} />
+            </div>
+            <div>
+              <FieldLabel htmlFor="playstyle">How do you want to play?</FieldLabel>
+              <textarea
+                id="playstyle"
+                value={playstyle}
+                maxLength={4000}
+                onChange={(e) => setPlaystyle(e.target.value)}
+                placeholder="A vibe, a victory type, a challenge — 'few cities, big wonders, culture win'."
+                style={{
+                  width: "100%", minHeight: "5.5rem", background: T.raised, color: T.text,
+                  border: `1px solid ${T.line}`, borderRadius: "5px", padding: "0.6rem",
+                  fontSize: "0.92rem", resize: "vertical", lineHeight: 1.5,
+                }}
+              />
+              <p style={{ color: T.muted, fontSize: "0.74rem", margin: "0.35rem 0 0", lineHeight: 1.45 }}>
+                The choices above are coarse hints. If this box disagrees with them, this box wins.
+              </p>
+            </div>
+            <Button onClick={generate} disabled={loading} style={{ width: "100%", padding: "0.7rem" }}>
+              {loading ? "Drafting…" : "Draft the strategy"}
+            </Button>
+          </div>
         </Panel>
 
-        <Panel style={{ minHeight: "14rem", padding: "1.5rem" }}>
-          {loading && <Thinking label="The coach is studying the board" />}
-
-          {!loading && error && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <ErrorNote message={error} onRetry={generate} />
+        <Panel
+          title="Game setup"
+          right={
+            <div style={{ display: "flex", gap: "0.4rem" }}>
+              {setupOpen && (
+                <Button variant="ghost" onClick={() => setConfig(DEFAULT_CONFIG)}
+                  style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}>
+                  Reset
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setSetupOpen((o) => !o)}
+                style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}
+                aria-expanded={setupOpen}>
+                {setupOpen ? "Done" : "Edit"}
+              </Button>
+            </div>
+          }
+        >
+          {!setupOpen ? (
+            <p style={{ margin: 0, color: T.text, fontSize: "0.86rem", lineHeight: 1.55 }}>
+              {setupSummary(config)}
+            </p>
+          ) : (
+            <div style={{ display: "grid", gap: "1rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.7rem" }}>
+                {SETUP_FIELDS.map((field) => (
+                  <div key={field.key}>
+                    <FieldLabel htmlFor={`setup-${field.key}`}>{field.label}</FieldLabel>
+                    {field.number ? (
+                      <NumberInput id={`setup-${field.key}`} value={config[field.key]}
+                        min={field.number.min} max={field.number.max}
+                        onChange={(v) => updateConfig(field.key, v)} />
+                    ) : (
+                      <Select id={`setup-${field.key}`} value={config[field.key]}
+                        options={field.options} onChange={(v) => updateConfig(field.key, v)} />
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div>
+                <FieldLabel>Game modes</FieldLabel>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                  {MODES.map((mode) => (
+                    <ToggleChip key={mode.key} id={`mode-${mode.key}`}
+                      checked={config.modes[mode.key]} onChange={() => toggleMode(mode.key)}>
+                      {mode.label.replace(/ Mode$/, "")}
+                    </ToggleChip>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
-
-          {!loading && !error && !build && (
-            <Empty>
-              The board is set. Describe your build and the coach will draft your plan.
-            </Empty>
-          )}
-
-          {!loading && build && (
-            <article>
-              <header
-                style={{
-                  display: "flex", justifyContent: "space-between",
-                  alignItems: "baseline", gap: "1rem", flexWrap: "wrap",
-                  marginBottom: "0.5rem", borderBottom: `1px solid ${T.border}`,
-                  paddingBottom: "0.75rem",
-                }}
-              >
-                <div>
-                  <h2
-                    style={{
-                      fontFamily: SERIF, color: T.parchment,
-                      fontSize: "1.3rem", margin: 0,
-                    }}
-                  >
-                    {build.title}
-                  </h2>
-                  <p
-                    style={{
-                      color: T.parchmentDim, fontSize: "0.78rem",
-                      margin: "0.3rem 0 0",
-                    }}
-                  >
-                    Saved to your archive — rename or delete it there.
-                  </p>
-                  <UsageNote usage={build.usage} style={{ display: "block", marginTop: "0.3rem" }} />
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <Button variant="ghost" onClick={() => onOpenArchive?.(build.id)}>
-                    Open in archive
-                  </Button>
-                  <Button variant="ghost" onClick={() => setBuild(null)}>
-                    New briefing
-                  </Button>
-                </div>
-              </header>
-              <div style={{ maxWidth: "44rem" }}>
-                <UnverifiedNames names={build.unverified_names} />
-                <Markdown text={build.generated_plan} />
-              </div>
-            </article>
-          )}
         </Panel>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem", minWidth: 0 }}>
+        {loading && (
+          <Panel><Thinking label="The coach is studying the board" /></Panel>
+        )}
+
+        {!loading && error && <ErrorNote message={error} onRetry={generate} />}
+
+        {!loading && !error && !build && (
+          <Panel>
+            <Empty>
+              Set your build on the left and draft a strategy. The plan lands here — twelve
+              sections, with a Playbook you can tick off mid-game.
+            </Empty>
+          </Panel>
+        )}
+
+        {!loading && build && (
+          <article style={{ display: "grid", gap: "0.9rem" }}>
+            <header
+              style={{
+                display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+                gap: "0.75rem", flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <h2 style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: "1.55rem", margin: 0, color: T.text }}>
+                  {build.title}
+                </h2>
+                <div style={{ color: T.muted, fontSize: "0.78rem", marginTop: "0.2rem" }}>
+                  Saved to your archive ·{" "}
+                  <UsageNote usage={build.usage} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <Button variant="ghost" onClick={() => onOpenArchive?.(build.id)}>Open in archive</Button>
+                <Button variant="ghost" onClick={() => setBuild(null)}>New briefing</Button>
+              </div>
+            </header>
+            <UnverifiedNames names={build.unverified_names} />
+            <Markdown text={build.generated_plan} layout="sections" buildId={build.id} />
+          </article>
+        )}
       </div>
     </div>
   );

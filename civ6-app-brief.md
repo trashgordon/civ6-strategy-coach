@@ -19,7 +19,7 @@ Three-tab navigation: **New briefing** / **Archive** / **Compare**.
 - **Archive** — browse/search/filter saved builds, newest first.
 - **Compare** — multi-select 2+ saved builds → a structured side-by-side table (civ, focus, posture, city philosophy, key techs/wonders) plus an AI-generated compare-and-contrast writeup (separate prompt, below).
 
-**Visual direction:** dark ink-navy panels, brass/gold accents, serif headers (Georgia/Iowan-style stack) against a clean sans-serif UI font, hairline dividers — a "campaign briefing table" feel rather than a generic SaaS dashboard. The nav tabs sit at the top; New Briefing keeps the two-column layout (config left, dossier output right) from the original prototype.
+**Visual direction:** a modern strategy-game interface, chosen over the original navy-and-brass look. Charcoal panels with one teal accent, Barlow Semi Condensed for labels and headings over Barlow for text (both self-hosted), and Civ VI's yield colours used semantically — never as decoration. Dark and light themes, switchable, following the OS by default. New Briefing keeps two columns: every input on the left (build choices as segmented controls, game setup collapsed to one line), the plan on the right as one card per section, with a turn track for the benchmarks and the Playbook as a checklist.
 
 ## LLM: provider-agnostic
 Use **LiteLLM** (Python) rather than a hand-rolled Anthropic-only client, so the generation call is one function regardless of provider.

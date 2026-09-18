@@ -13,9 +13,12 @@ You run it yourself, with your own LLM API key. No hosted instance, no accounts.
 
 ## Screenshots
 
-| New briefing | Archive | Compare |
+| New briefing | A plan in the Archive | Light theme |
 | --- | --- | --- |
-| ![The briefing table](docs/screenshots/new-briefing.png) | ![The archive](docs/screenshots/archive.png) | ![Compare two builds](docs/screenshots/compare.png) |
+| ![The New briefing form](docs/screenshots/new-briefing.png) | ![A twelve-section plan as cards](docs/screenshots/archive.png) | ![The same plan in the light theme](docs/screenshots/light-theme.png) |
+
+Dark and light themes both ship. It follows your system setting until you pick one from
+the **Auto / Light / Dark** switch in the top bar, and remembers the choice.
 
 ## Setup
 
