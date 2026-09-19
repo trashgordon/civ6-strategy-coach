@@ -87,6 +87,27 @@ SCHEMA_V8 = """
 ALTER TABLE saved_builds ADD COLUMN decisions_json TEXT NOT NULL DEFAULT '';
 """
 
+# Blind A/B ratings: two plans for the same brief from two settings, shown unlabelled.
+# `left_is_a` fixes which side each plan appears on, so a reload can't reshuffle it.
+SCHEMA_V9 = """
+CREATE TABLE IF NOT EXISTS rating_pairs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT    NOT NULL,
+    experiment  TEXT    NOT NULL,
+    brief_id    TEXT    NOT NULL DEFAULT '',
+    brief_json  TEXT    NOT NULL DEFAULT '{}',
+    label_a     TEXT    NOT NULL,
+    label_b     TEXT    NOT NULL,
+    plan_a      TEXT    NOT NULL,
+    plan_b      TEXT    NOT NULL,
+    left_is_a   INTEGER NOT NULL,
+    verdict     TEXT    NOT NULL DEFAULT '',   -- '' | 'a' | 'b' | 'tie'
+    note        TEXT    NOT NULL DEFAULT '',
+    rated_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_rating_pairs_experiment ON rating_pairs (experiment);
+"""
+
 # The civ a build was actually played as: the player's pick when they made one,
 # otherwise the coach's. Used wherever a build is grouped, filtered or shown by civ.
 PLAYED_CIV = "COALESCE(NULLIF(civ, ''), NULLIF(recommended_civ, ''), '')"
@@ -101,6 +122,7 @@ MIGRATIONS: list[tuple[int, str]] = [
     (6, SCHEMA_V6),
     (7, SCHEMA_V7),
     (8, SCHEMA_V8),
+    (9, SCHEMA_V9),
 ]
 
 OUTCOMES = ("won", "lost", "abandoned")
@@ -622,3 +644,111 @@ def outcome_stats() -> dict[str, Any]:
         "mean_winning_turn": round(turns["mean"]) if turns["mean"] is not None else None,
         "fastest_win_turn": turns["fastest"],
     }
+
+
+# ------------------------------------------------------------------------- ratings
+
+VERDICTS = ("a", "b", "tie")
+
+
+def insert_rating_pair(
+    *, experiment: str, brief_id: str, brief: dict, label_a: str, label_b: str,
+    plan_a: str, plan_b: str, left_is_a: bool,
+) -> int:
+    conn = connect()
+    with conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO rating_pairs (created_at, experiment, brief_id, brief_json,
+                                      label_a, label_b, plan_a, plan_b, left_is_a)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.now(timezone.utc).isoformat(timespec="seconds"), experiment,
+                brief_id, json.dumps(brief, ensure_ascii=False), label_a, label_b,
+                plan_a, plan_b, int(bool(left_is_a)),
+            ),
+        )
+    return cursor.lastrowid  # type: ignore[return-value]
+
+
+def _blind(row: sqlite3.Row) -> dict[str, Any]:
+    """A pair as the rater sees it: sides, not settings."""
+    left, right = (row["plan_a"], row["plan_b"]) if row["left_is_a"] else (row["plan_b"], row["plan_a"])
+    return {
+        "id": row["id"],
+        "experiment": row["experiment"],
+        "brief_id": row["brief_id"],
+        "brief": json.loads(row["brief_json"] or "{}"),
+        "left": left,
+        "right": right,
+    }
+
+
+def next_unrated_pair(experiment: str = "") -> dict[str, Any] | None:
+    """The oldest pair still waiting for a verdict — blind, with no labels."""
+    sql = "SELECT * FROM rating_pairs WHERE verdict = ''"
+    args: list[Any] = []
+    if experiment:
+        sql += " AND experiment = ?"
+        args.append(experiment)
+    row = connect().execute(sql + " ORDER BY id LIMIT 1", args).fetchone()
+    return _blind(row) if row else None
+
+
+def rate_pair(pair_id: int, side: str, note: str = "") -> dict[str, Any] | None:
+    """Record a verdict given by side ('left' | 'right' | 'tie'), then reveal the settings."""
+    conn = connect()
+    row = conn.execute("SELECT * FROM rating_pairs WHERE id = ?", (pair_id,)).fetchone()
+    if row is None:
+        return None
+    left, right = ("a", "b") if row["left_is_a"] else ("b", "a")
+    verdict = {"left": left, "right": right, "tie": "tie"}[side]
+    with conn:
+        conn.execute(
+            "UPDATE rating_pairs SET verdict = ?, note = ?, rated_at = ? WHERE id = ?",
+            (verdict, note or "", datetime.now(timezone.utc).isoformat(timespec="seconds"), pair_id),
+        )
+    return {
+        "id": pair_id,
+        "verdict": verdict,
+        "left_label": row["label_a"] if row["left_is_a"] else row["label_b"],
+        "right_label": row["label_b"] if row["left_is_a"] else row["label_a"],
+        "winner_label": {"a": row["label_a"], "b": row["label_b"], "tie": None}[verdict],
+    }
+
+
+def _sign_test(wins: int, losses: int) -> float | None:
+    """Two-sided exact sign test: how likely a split this lopsided is by chance.
+    Ties don't count either way. None with nothing decided."""
+    n = wins + losses
+    if n == 0:
+        return None
+    from math import comb
+
+    k = min(wins, losses)
+    tail = sum(comb(n, i) for i in range(k + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
+
+
+def rating_summary() -> list[dict[str, Any]]:
+    """Per experiment: how each setting fared, and whether it's more than noise."""
+    rows = connect().execute(
+        """
+        SELECT experiment, label_a, label_b,
+               COUNT(*) AS pairs,
+               SUM(verdict = 'a') AS a_wins, SUM(verdict = 'b') AS b_wins,
+               SUM(verdict = 'tie') AS ties, SUM(verdict = '') AS unrated,
+               MIN(created_at) AS created_at
+        FROM rating_pairs GROUP BY experiment, label_a, label_b ORDER BY MIN(id)
+        """
+    ).fetchall()
+    out = []
+    for r in rows:
+        a, b = r["a_wins"] or 0, r["b_wins"] or 0
+        out.append({
+            "experiment": r["experiment"], "label_a": r["label_a"], "label_b": r["label_b"],
+            "pairs": r["pairs"], "a_wins": a, "b_wins": b, "ties": r["ties"] or 0,
+            "unrated": r["unrated"] or 0, "p_value": _sign_test(a, b),
+        })
+    return out

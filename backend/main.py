@@ -130,6 +130,26 @@ class CompareRequest(BaseModel):
         return unique
 
 
+class RatingRequest(BaseModel):
+    side: str
+    note: str = ""
+
+    @field_validator("side")
+    @classmethod
+    def known_side(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in {"left", "right", "tie"}:
+            raise ValueError("side must be left, right or tie")
+        return value
+
+    @field_validator("note")
+    @classmethod
+    def cap_note(cls, value: str) -> str:
+        if len(value) > 4000:
+            raise ValueError("note is too long (4000 character limit)")
+        return value
+
+
 class LoginRequest(BaseModel):
     password: str
 
@@ -308,6 +328,27 @@ def stats() -> dict[str, Any]:
     body["outcomes"] = list(db.OUTCOMES)
     body["victory_types"] = list(db.VICTORY_TYPES)
     return body
+
+
+# -------------------------------------------------------------------------- ratings
+
+
+@app.get("/api/ratings", dependencies=[Depends(require_auth)])
+def ratings(experiment: str = "") -> dict[str, Any]:
+    """The next pair to rate — blind — and how every experiment stands so far.
+
+    Nothing here says which setting wrote which plan: that's only returned once the
+    pair has been rated.
+    """
+    return {"next": db.next_unrated_pair(experiment), "summary": db.rating_summary()}
+
+
+@app.post("/api/ratings/{pair_id}", dependencies=[Depends(require_auth)])
+def rate(pair_id: int, payload: RatingRequest) -> dict[str, Any]:
+    revealed = db.rate_pair(pair_id, payload.side, payload.note)
+    if revealed is None:
+        raise HTTPException(status_code=404, detail="No rating pair with that id")
+    return revealed
 
 
 # -------------------------------------------------------------------------- compare

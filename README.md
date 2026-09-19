@@ -382,6 +382,26 @@ When the coach gets caught in a new mistake, add it to `KNOWN_WRONG` in
 The first cold call warms the prompt cache before the rest run in parallel, and spend
 is logged to your usage totals as `eval`.
 
+### Blind ratings: is the strategy any good?
+
+The checks above say whether a plan is *correct*. Whether it's *good* takes a human
+reading two plans for the same brief without knowing which setting wrote which. So:
+generate two eval runs under the two settings you want to compare, pair them up, and
+rate them in the app's **Rate** tab:
+
+```bash
+PIPELINE=single python -m evals.run --yes      # setting A
+PIPELINE=staged python -m evals.run --yes      # setting B
+python -m evals.pairs make RUN_A RUN_B -e single-vs-staged
+python -m evals.pairs report
+```
+
+Each pair shows the brief and both plans side by side, shuffled left and right; which
+setting wrote which is only revealed after you pick (keys 1, T, 2). Results are tallied
+per experiment with a sign test, because with a handful of pairs even a 4–1 split
+(p = 0.38) can be chance — six straight wins (p = 0.03) is where it starts to mean
+something. Making pairs reads saved runs only; it costs nothing.
+
 ## Development
 
 ```bash

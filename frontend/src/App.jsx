@@ -6,6 +6,7 @@ import NewBriefing from "./views/NewBriefing";
 import Archive from "./views/Archive";
 import Compare from "./views/Compare";
 import Stats from "./views/Stats";
+import Rate from "./views/Rate";
 import Login from "./views/Login";
 
 const TABS = [
@@ -13,6 +14,7 @@ const TABS = [
   { key: "archive", label: "Archive" },
   { key: "compare", label: "Compare" },
   { key: "stats", label: "Stats" },
+  { key: "rate", label: "Rate" },
 ];
 
 function Tabs({ active, onChange }) {
@@ -199,6 +201,7 @@ export default function App() {
           />
         )}
         {tab === "stats" && <Stats refreshKey={refreshKey} />}
+        {tab === "rate" && <Rate />}
         {tab === "compare" && (
           <Compare
             refreshKey={refreshKey}

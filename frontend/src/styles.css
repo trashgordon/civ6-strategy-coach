@@ -126,6 +126,17 @@ a:focus-visible {
 
 .compare-scroll { overflow-x: auto; }
 
+/* Blind rating: two plans side by side, stacked when there's no room. */
+.rate-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (max-width: 62rem) {
+  .rate-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Segmented control: real radio buttons, styled as one strip. */
 .seg { display: grid; background: var(--raised); border-radius: 6px; padding: 3px; gap: 3px; border: 0; margin: 0; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }

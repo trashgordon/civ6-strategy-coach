@@ -68,6 +68,11 @@ export const api = {
 
   usage: () => request("/usage"),
 
+  ratings: (experiment = "") =>
+    request(`/ratings${experiment ? `?experiment=${encodeURIComponent(experiment)}` : ""}`),
+  rate: (id, side, note = "") =>
+    request(`/ratings/${id}`, { method: "POST", body: JSON.stringify({ side, note }) }),
+
   compare: (buildIds) =>
     request("/compare", { method: "POST", body: JSON.stringify({ build_ids: buildIds }) }),
 };
