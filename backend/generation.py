@@ -49,7 +49,8 @@ _NUMBERING = re.compile(r"^(?:\d+[.)]\s*|#\d+\s*)")
 
 
 def tidy_headers(plan: str) -> str:
-    """Put decorated headers back to the exact thirteen the app renders by name.
+    """Put decorated headers back to the exact thirteen the app renders by name, and the
+    sections back in order.
 
     "## Timing Benchmarks (Standard speed)" keeps happening despite the prompt forbidding
     it (1 in 6 plans, at any reasoning effort), and the app keys section rendering on the
@@ -78,7 +79,31 @@ def tidy_headers(plan: str) -> str:
             return f"## {header}{note.rstrip('.') + '.' if note else ''}"
         return match.group(0)
 
-    return _HEADER.sub(fix, plan)
+    return _in_order(_HEADER.sub(fix, plan), expected)
+
+
+def _in_order(plan: str, expected: list[str]) -> str:
+    """Put the sections back in the prompt's order.
+
+    The coach has moved Religious Beliefs after What Goes Wrong more than once. Only
+    reorders when every header is a known one, each exactly once — anything stranger is
+    left as written rather than guessed at. Text before the first header stays first.
+    """
+    starts = [m.start() for m in _HEADER.finditer(plan)]
+    if not starts:
+        return plan
+    preamble = plan[: starts[0]]
+    chunks = [plan[a:b] for a, b in zip(starts, starts[1:] + [len(plan)])]
+    names = [_HEADER.match(c).group(1) for c in chunks]
+    if sorted(names) != sorted(set(names)) or not set(names) <= set(expected):
+        return plan
+    if names == [h for h in expected if h in names]:
+        return plan
+    # Each chunk ends with the blank lines before the next header; normalise so the
+    # moved sections are separated the same way wherever they land.
+    by_name = {n: c.rstrip("\n") for n, c in zip(names, chunks)}
+    ordered = [by_name[h] for h in expected if h in by_name]
+    return preamble + "\n\n".join(ordered) + ("\n" if plan.endswith("\n") else "")
 
 
 async def draft_plan(
