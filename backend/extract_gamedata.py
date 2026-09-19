@@ -403,7 +403,7 @@ def _tree(db: "ruleset.Database", names: dict[str, str]) -> dict:
     def era(key: str | None) -> str:
         return (key or "").removeprefix("ERA_").replace("_", " ").title()
 
-    out: dict = {"technologies": {}, "civics": {}, "unlocks": []}
+    out: dict = {"technologies": {}, "civics": {}, "unlocks": [], "wonders": {}}
     type_names: dict[str, str] = {}
     for table, type_col, prereq_table, item_col, prereq_col, bucket in (
         ("Technologies", "TechnologyType", "TechnologyPrereqs", "Technology", "PrereqTech", "technologies"),
@@ -475,6 +475,23 @@ def _tree(db: "ruleset.Database", names: dict[str, str]) -> dict:
                 "civ": civ,
             })
     out["unlocks"].sort(key=lambda u: (u["by"], u["kind"], u["name"]))
+
+    # What each wonder does, as this ruleset describes it (the expansions rewrite some
+    # descriptions), with its cost. The text includes the placement rule — "Must be
+    # built on Desert or Floodplains without Hills" — which the coach otherwise guesses.
+    unlocked_by = {u["name"]: u["by"] for u in out["unlocks"] if u["kind"] == "wonder"}
+    for row in db.rows("Buildings"):
+        if row.get("IsWonder") != "true":
+            continue
+        display = name(row.get("Name"))
+        effect = _clean_text(names.get(row.get("Description") or "", ""))
+        if not display or not effect or display not in unlocked_by:
+            continue  # no way to build it in this ruleset
+        try:
+            cost = int(row.get("Cost") or 0)
+        except ValueError:
+            cost = 0
+        out["wonders"][display] = {"effect": effect, "cost": cost, "by": unlocked_by[display]}
     return out
 
 

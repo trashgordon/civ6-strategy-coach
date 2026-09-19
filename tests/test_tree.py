@@ -47,6 +47,10 @@ STORM = {
         _unlock("Oligarchy", "government", "Political Philosophy", "civic"),
         _unlock("Discipline", "policy card", "Code of Laws", "civic"),
     ],
+    "wonders": {
+        "Colosseum": {"effect": "+2 Culture. Must be built on flat land.", "cost": 400,
+                      "by": "Games and Recreation"},
+    },
 }
 # Vanilla differs, so the ruleset has to be honoured rather than one tree assumed.
 VANILLA = {**STORM, "technologies": {**STORM["technologies"], "Currency": _tech("Ancient", 80, "Pottery")}}
@@ -240,3 +244,8 @@ def test_a_claim_belongs_to_the_chain_step_it_is_written_in(installed_tree):
 
 def test_holding_out_for_an_unlock_is_not_a_claim_about_it(installed_tree):
     assert issues(civic="- **Civil Service** (or hold for Oligarchy)") == []
+
+
+def test_wonders_reach_the_prompt_with_effect_placement_and_unlock(installed_tree):
+    block = facts.prompt_block(ruleset="Gathering Storm")
+    assert "- Colosseum (Games and Recreation, 400 production): +2 Culture. Must be built on flat land." in block

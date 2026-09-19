@@ -82,6 +82,16 @@ def prompt_section(ruleset: str | None) -> str:
             if unlocks.get(name):
                 line += " → " + ", ".join(unlocks[name])
             lines.append(line)
+
+    wonders = tree.get("wonders", {})
+    if wonders:
+        lines.append(
+            "Wonders — what each actually does and where it can be built, with its "
+            "production cost and what unlocks it. Describe a wonder only as written here, "
+            "and respect its placement rule when you say where to build it:"
+        )
+        for name, info in sorted(wonders.items(), key=lambda kv: (kv[1].get("cost", 0), kv[0])):
+            lines.append(f"- {name} ({info.get('by', '')}, {info.get('cost', 0)} production): {info['effect']}")
     return "\n".join(lines)
 
 

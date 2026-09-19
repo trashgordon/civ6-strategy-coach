@@ -149,7 +149,10 @@ def test_the_tree_carries_prerequisites_unlocks_and_whose_uniques_they_are():
         </Units>
         <UnitReplaces><Row CivUniqueUnitType="UNIT_LEGION" ReplacesUnitType="UNIT_SWORDSMAN"/></UnitReplaces>
         <Buildings>
-          <Row BuildingType="BUILDING_COLOSSEUM" Name="LOC_COLOSSEUM" PrereqCivic="CIVIC_GAMES" IsWonder="true"/>
+          <Row BuildingType="BUILDING_COLOSSEUM" Name="LOC_COLOSSEUM" PrereqCivic="CIVIC_GAMES"
+               IsWonder="true" Cost="400" Description="LOC_COLOSSEUM_DESC"/>
+          <Update><Where BuildingType="BUILDING_COLOSSEUM"/>
+                  <Set><Description>LOC_COLOSSEUM_XP2_DESC</Description></Set></Update>
         </Buildings>
         <Civilizations>
           <Row CivilizationType="CIV_ROME" Name="LOC_ROME" StartingCivilizationLevelType="CIVILIZATION_LEVEL_FULL_CIV"/>
@@ -164,6 +167,8 @@ def test_the_tree_carries_prerequisites_unlocks_and_whose_uniques_they_are():
         "LOC_GAMES": "Games and Recreation", "LOC_SWORDSMAN": "Swordsman", "LOC_LEGION": "Legion",
         "LOC_RIDER": "Rough Rider", "LOC_CS": "City-State Unit", "LOC_COLOSSEUM": "Colosseum",
         "LOC_ROME": "Rome", "LOC_AMERICA": "America",
+        "LOC_COLOSSEUM_DESC": "+2 [ICON_Culture] Culture. Old text.",
+        "LOC_COLOSSEUM_XP2_DESC": "+2 [ICON_Culture] Culture, +2 [ICON_Amenities] Amenities. Must be built on flat land.",
     }
     tree = extract_gamedata._tree(db, names)
 
@@ -177,3 +182,8 @@ def test_the_tree_carries_prerequisites_unlocks_and_whose_uniques_they_are():
     assert unlocks["Colosseum"]["kind"] == "wonder"
     assert unlocks["Colosseum"]["tree"] == "civic"
     assert "City-State Unit" not in unlocks                  # not a major civ's
+    # The ruleset's own description wins, placement rule and all, with icons stripped.
+    assert tree["wonders"]["Colosseum"] == {
+        "effect": "+2 Culture, +2 Amenities. Must be built on flat land.",
+        "cost": 400, "by": "Games and Recreation",
+    }
