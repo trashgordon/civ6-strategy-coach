@@ -7,7 +7,7 @@ import { OUTCOMES, VICTORY_TYPES } from "../data";
 import { SERIF, T } from "../theme";
 import {
   Button, Empty, ErrorNote, NumberInput, OutcomeBadge, Panel, Select, Tag, TextInput,
-  UnverifiedNames, UsageNote, formatDate,
+  TreeIssues, UnverifiedNames, UsageNote, formatDate,
 } from "../components/ui";
 
 function BuildRow({ build, active, onSelect }) {
@@ -543,6 +543,7 @@ export default function Archive({
 
             <div>
               <UnverifiedNames names={selected.unverified_names} />
+              <TreeIssues issues={selected.tree_issues} />
               <Markdown text={selected.generated_plan} layout="sections" buildId={selected.id} />
             </div>
           </article>

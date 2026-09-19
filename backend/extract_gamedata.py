@@ -17,7 +17,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from . import config
+from . import config, ruleset
 
 # Where the game usually lives, per platform. CIV6_PATH overrides all of it.
 _CANDIDATE_ROOTS = [
@@ -358,6 +358,131 @@ def _city_states(assets: Path, strings: dict[str, set[str]]) -> list[dict[str, s
     return [found[k] for k in sorted(found)]
 
 
+def _display_names(assets: Path) -> dict[str, str]:
+    """LOC_* key -> the one name a player sees, ignoring scenario rewrites.
+
+    Unlike the validation whitelist, the tree has to say *which* name is right, so
+    "Catholic Monarchy" (Black Death scenario) must not stand in for Monarchy.
+    """
+    names: dict[str, set[str]] = defaultdict(set)
+    for path in assets.rglob("Text/en_US/*.xml"):
+        if ruleset._is_optional_content(path.relative_to(assets)):
+            continue
+        try:
+            content = path.read_text(errors="ignore")
+        except OSError:
+            continue
+        for tag, value in _LOC_ROW.findall(content):
+            if value.strip():
+                names[tag].add(value.strip())
+    return {tag: sorted(values, key=lambda v: (len(v), v))[0] for tag, values in names.items()}
+
+
+# Gameplay table -> (its type column, what the tree calls it).
+_UNLOCKABLES = (
+    ("Districts", "DistrictType", "district"),
+    ("Buildings", "BuildingType", "building"),
+    ("Improvements", "ImprovementType", "improvement"),
+    ("Units", "UnitType", "unit"),
+    ("Governments", "GovernmentType", "government"),
+    ("Policies", "PolicyType", "policy card"),
+)
+_REPLACES = {
+    "Districts": ("DistrictReplaces", "CivUniqueDistrictType", "ReplacesDistrictType"),
+    "Buildings": ("BuildingReplaces", "CivUniqueBuildingType", "ReplacesBuildingType"),
+    "Units": ("UnitReplaces", "CivUniqueUnitType", "ReplacesUnitType"),
+}
+
+
+def _tree(db: "ruleset.Database", names: dict[str, str]) -> dict:
+    """One ruleset's techs and civics — era, cost, prerequisites — and what each unlocks."""
+
+    def name(key: str | None) -> str | None:
+        return _clean(names.get(key or "", "")) if key else None
+
+    def era(key: str | None) -> str:
+        return (key or "").removeprefix("ERA_").replace("_", " ").title()
+
+    out: dict = {"technologies": {}, "civics": {}, "unlocks": []}
+    type_names: dict[str, str] = {}
+    for table, type_col, prereq_table, item_col, prereq_col, bucket in (
+        ("Technologies", "TechnologyType", "TechnologyPrereqs", "Technology", "PrereqTech", "technologies"),
+        ("Civics", "CivicType", "CivicPrereqs", "Civic", "PrereqCivic", "civics"),
+    ):
+        for row in db.rows(table):
+            display = name(row.get("Name"))
+            if display:
+                type_names[row[type_col]] = display
+        for row in db.rows(table):
+            display = type_names.get(row[type_col])
+            if not display or row.get("Repeatable") == "true":
+                continue  # Future Tech / Future Civic repeat; there's no path to plan
+            needs = sorted(
+                type_names[r[prereq_col]]
+                for r in db.rows(prereq_table)
+                if r.get(item_col) == row[type_col] and r.get(prereq_col) in type_names
+            )
+            try:
+                cost = int(row.get("Cost") or 0)
+            except ValueError:
+                cost = 0
+            out[bucket][display] = {"era": era(row.get("EraType")), "cost": cost, "needs": needs}
+
+    # Which major civ owns a unique, via its civ trait or its leader's trait.
+    majors = {
+        row["CivilizationType"]: name(row.get("Name"))
+        for row in db.rows("Civilizations")
+        if row.get("StartingCivilizationLevelType") == "CIVILIZATION_LEVEL_FULL_CIV"
+    }
+    trait_civ: dict[str, str] = {}
+    for row in db.rows("CivilizationTraits"):
+        if majors.get(row.get("CivilizationType")):
+            trait_civ[row["TraitType"]] = majors[row["CivilizationType"]]
+    leader_civ = {
+        row["LeaderType"]: majors[row["CivilizationType"]]
+        for row in db.rows("CivilizationLeaders")
+        if majors.get(row.get("CivilizationType"))
+    }
+    for row in db.rows("LeaderTraits"):
+        if row.get("LeaderType") in leader_civ:
+            trait_civ.setdefault(row["TraitType"], leader_civ[row["LeaderType"]])
+
+    seen: set[tuple[str, str]] = set()
+    for table, type_col, kind in _UNLOCKABLES:
+        rows = {row[type_col]: row for row in db.rows(table) if row.get(type_col)}
+        replaces = {}
+        if table in _REPLACES:
+            rep_table, unique_col, base_col = _REPLACES[table]
+            replaces = {r[unique_col]: r.get(base_col) for r in db.rows(rep_table)}
+        for type_key, row in rows.items():
+            trait = row.get("TraitType")
+            civ = trait_civ.get(trait or "", "")
+            if trait and not civ:
+                continue  # a city-state's, a barbarian's, or a game mode's
+            source = row
+            if not (row.get("PrereqTech") or row.get("PrereqCivic")) and type_key in replaces:
+                source = rows.get(replaces[type_key]) or row  # a unique inherits its unlock
+            tech, civic = source.get("PrereqTech"), source.get("PrereqCivic")
+            by = type_names.get(tech or "") or type_names.get(civic or "")
+            display = name(row.get("Name"))
+            if not by or not display or (display, civ) in seen:
+                continue
+            seen.add((display, civ))
+            entry_kind = "wonder" if table == "Buildings" and row.get("IsWonder") == "true" else kind
+            out["unlocks"].append({
+                "name": display, "kind": entry_kind, "by": by,
+                "tree": "technology" if type_names.get(tech or "") else "civic",
+                "civ": civ,
+            })
+    out["unlocks"].sort(key=lambda u: (u["by"], u["kind"], u["name"]))
+    return out
+
+
+def _trees(assets: Path) -> dict[str, dict]:
+    names = _display_names(assets)
+    return {label: _tree(ruleset.load(assets, label), names) for label in ruleset.RULESETS}
+
+
 def _clean(name: str) -> str | None:
     """Drop unresolved keys, icon markup, and anything that isn't a plain name."""
     if not name:
@@ -420,6 +545,8 @@ def extract() -> dict[str, list]:
     facts["dedication_bonuses"] = _dedications(assets, strings)
     facts["effects"] = _effects(rows, strings)
     facts["governor_kits"] = _governor_kits(rows, strings, facts["effects"])
+    # Per ruleset: the expansions rewrite the tree, so one merged tree would be wrong.
+    facts["tree"] = _trees(assets)
     # A scan-only table; it exists to build governor_kits, not to be listed.
     facts.pop("_governor_promotion_sets", None)
 
@@ -465,6 +592,8 @@ def main() -> int:
             note = " (what things actually do)"
         elif name == "dedication_bonuses":
             note = " (golden / normal / dark age)"
+        elif name == "tree":
+            note = " rulesets (tech & civic prerequisites, unlocks)"
         print(f"  {name:22} {len(values):>5}{note}")
     print(f"\n  {'TOTAL':22} {total:>5} names -> {out}")
     return 0

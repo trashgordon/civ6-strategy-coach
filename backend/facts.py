@@ -18,6 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from .extract_gamedata import facts_dir
+from . import tree
 from .gamedata import CIVS
 
 # Injected into the prompt. Chosen for the sections the coach actually writes, and
@@ -163,6 +164,7 @@ def reload() -> None:
     effects.cache_clear()
     dedication_bonuses.cache_clear()
     governor_kits.cache_clear()
+    tree.reload()
 
 
 def available() -> bool:
@@ -260,11 +262,20 @@ def _known_names() -> frozenset[str]:
     return frozenset(names)
 
 
-def prompt_block(max_names_per_category: int = 400) -> str:
-    """Closed sets of real names for the system prompt. Empty string when unavailable."""
+# Covered, with prerequisites and unlocks, by the ruleset's tree when it's installed.
+_IN_THE_TREE = {"technologies", "civics", "wonders"}
+
+
+def prompt_block(max_names_per_category: int = 400, ruleset: str | None = None) -> str:
+    """Closed sets of real names for the system prompt. Empty string when unavailable.
+
+    The block differs per ruleset (the expansions rewrite the tech tree), so the prompt
+    cache holds one entry per ruleset — three at most.
+    """
     data = _load()
     if not data:
         return ""
+    tree_section = tree.prompt_section(ruleset)
 
     known_effects = effects()
     lines = [
@@ -276,13 +287,17 @@ def prompt_block(max_names_per_category: int = 400) -> str:
     ]
     for category, label in INJECT_CATEGORIES:
         values = data.get(category, ())
-        if not values:
+        if not values or (tree_section and category in _IN_THE_TREE):
             continue
         shown = values[:max_names_per_category]
         lines.append(f"{label}:")
         for value in shown:
             effect = known_effects.get(value)
             lines.append(f"- {value}: {effect}" if effect else f"- {value}")
+        lines.append("")
+
+    if tree_section:
+        lines.append(tree_section)
         lines.append("")
 
     abilities = data.get("abilities", ())

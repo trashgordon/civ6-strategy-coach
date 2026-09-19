@@ -131,9 +131,30 @@ Two things then happen:
 - **Detection** — every name the coach puts in bold is checked against the data
   afterwards, and anything unrecognised is flagged above the plan with a ⚠ marker. Free.
 
+#### The tech and civic trees
+
+A real name can still be in the wrong place. The extractor also rebuilds each ruleset's
+tech and civic trees — Vanilla, Rise & Fall and Gathering Storm separately, applying
+each expansion's changes in the game's own load order, because Gathering Storm rewrites
+prerequisites (Cartography needs Buttress, not Shipbuilding). Every tech and civic comes
+with its prerequisites and what it unlocks, including each civ's uniques.
+
+The briefing's ruleset tree goes into the prompt, and the Tech Path and Civic Path are
+checked against it afterwards for three mistakes the name check can't see:
+
+- **Out of order** — "Pottery → Currency → Writing", when Currency needs Writing.
+- **Wrong tree** — Civil Service (a civic) in the tech path.
+- **Wrong unlock** — "**Civil Service** for Classical Republic", which comes from
+  Political Philosophy; "**Mathematics → Construction** for Colosseum", a civic unlock.
+
+Before this, 16 of the 18 plans in one real archive had at least one of these. The check
+leans towards staying quiet: "Economics for Commercial Hub snowball" isn't flagged
+(hubs keep paying off, and you have Currency by then), nor is "for Seowon buffs".
+
 #### Prompt caching
 
-The facts block is byte-identical on every call, so it's sent as a cached prefix — the
+The facts block is byte-identical on every call for a given ruleset (one cache entry
+per ruleset, three at most), so it's sent as a cached prefix — the
 volatile part (your configuration) sits after the breakpoint and never invalidates it.
 Measured on Claude Sonnet 5 with the full grounding block (~35,800 cached tokens):
 

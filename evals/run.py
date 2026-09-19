@@ -85,7 +85,8 @@ async def run_one(base: dict, brief: dict, attempt: int) -> dict:
             "completion_tokens": result.completion_tokens,
             "cache_read_tokens": result.cache_read_tokens,
             "plan": result.text,
-            "score": scoring.score_plan(result.text),
+            "ruleset": cfg.get("ruleset"),
+            "score": scoring.score_plan(result.text, cfg.get("ruleset")),
         }
     )
     return record
@@ -158,6 +159,7 @@ def summarise(results: list[dict]) -> dict:
         ),
         "mean_words": round(sum(r["score"]["words"] for r in scored) / len(scored)) if scored else None,
         "unverified_total": sum(len(r["score"]["unverified"]) for r in scored),
+        "tree_issues_total": sum(len(r["score"].get("tree_issues", [])) for r in scored),
         "known_wrong_tripped": tripped,
         "cost_usd": round(sum(r.get("cost_usd") or 0 for r in results), 4),
     }
@@ -192,6 +194,9 @@ def print_report(summary: dict, fp: dict, before: dict | None) -> None:
           + (f"  (was {old['mean_words']})" if old.get("mean_words") else ""))
     print(f"  unverified names   {summary['unverified_total']}"
           + (f"  (was {old['unverified_total']})" if "unverified_total" in old else ""))
+    if "tree_issues_total" in summary:
+        print(f"  tree issues        {summary['tree_issues_total']}"
+              + (f"  (was {old['tree_issues_total']})" if "tree_issues_total" in old else ""))
     tripped = summary["known_wrong_tripped"]
     print(f"  known-wrong claims {', '.join(f'{k} x{v}' for k, v in tripped.items()) or 'none'}")
     print(f"  cost               ${summary['cost_usd']:.4f}")
@@ -222,7 +227,8 @@ def rescore(which: str) -> int:
               "started_at": f"{data['started_at']} as originally scored"}
     for r in data["results"]:
         if "plan" in r:
-            r["score"] = scoring.score_plan(r["plan"])
+            # Runs saved before rulesets were recorded all used the base config's.
+            r["score"] = scoring.score_plan(r["plan"], r.get("ruleset"))
     data["summary"] = summarise(data["results"])
     data["rescored_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     path.write_text(json.dumps(data, indent=1, ensure_ascii=False))

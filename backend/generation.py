@@ -16,9 +16,9 @@ from . import facts, llm, prompts
 MAX_PLAN_TOKENS = 6000
 
 
-def system_prompt() -> str:
-    """The build prompt as actually sent, grounding included."""
-    return prompts.build_system_prompt(facts.prompt_block())
+def system_prompt(ruleset: str | None = None) -> str:
+    """The build prompt as actually sent, grounding (and that ruleset's tree) included."""
+    return prompts.build_system_prompt(facts.prompt_block(ruleset=ruleset))
 
 
 async def draft_plan(
@@ -39,4 +39,6 @@ async def draft_plan(
         posture=posture,
         playstyle_text=playstyle_text,
     )
-    return await llm.complete(system_prompt(), user_prompt, max_tokens=MAX_PLAN_TOKENS)
+    return await llm.complete(
+        system_prompt(config.get("ruleset")), user_prompt, max_tokens=MAX_PLAN_TOKENS
+    )

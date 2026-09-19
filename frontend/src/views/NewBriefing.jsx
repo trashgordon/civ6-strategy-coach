@@ -9,7 +9,7 @@ import { Markdown } from "../markdown";
 import { DISPLAY, T } from "../theme";
 import {
   Button, Empty, ErrorNote, FieldLabel, NumberInput, Panel, Segmented, Select, Thinking,
-  ToggleChip, UnverifiedNames, UsageNote,
+  ToggleChip, TreeIssues, UnverifiedNames, UsageNote,
 } from "../components/ui";
 
 // Short labels for the segmented controls. The values stay the full strings the
@@ -247,6 +247,7 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
               </div>
             </header>
             <UnverifiedNames names={build.unverified_names} />
+            <TreeIssues issues={build.tree_issues} />
             <Markdown text={build.generated_plan} layout="sections" buildId={build.id} />
           </article>
         )}

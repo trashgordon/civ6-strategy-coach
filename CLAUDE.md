@@ -23,8 +23,10 @@ A local-first, open-source web app: a Civilization VI build coach. Configure a g
 `backend/extract_gamedata.py` pulls canonical names from the user's own Civ VI install
 into `data/facts/` (gitignored — it's Firaxis's copyrighted content, so the repo ships
 the extractor, never the data). `backend/facts.py` feeds those names into the prompt and
-checks generated plans against them. Every part of this must degrade to a silent no-op
-when `data/facts/` is absent.
+checks generated plans against them. `backend/ruleset.py` replays each ruleset's XML in
+the game's load order to build its tech/civic tree; `backend/tree.py` puts that tree in
+the prompt and checks the plan's paths against it. Every part of this must degrade to a
+silent no-op when `data/facts/` is absent.
 
 ## Evals
 Measure prompt and grounding changes with `python -m evals.run` (costs ~$0.30; say so

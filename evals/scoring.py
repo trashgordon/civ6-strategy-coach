@@ -12,7 +12,7 @@ possible, so editing the prompt can't silently leave the eval checking the old r
 import re
 from statistics import median
 
-from backend import facts, prompts
+from backend import facts, prompts, tree
 
 PASS, FAIL, SKIP = "pass", "fail", "skip"
 
@@ -73,7 +73,7 @@ def benchmark_turns(plan: str) -> list[int]:
     return [int(n) for n in found]
 
 
-def score_plan(plan: str) -> dict:
+def score_plan(plan: str, ruleset: str | None = None) -> dict:
     """All checks and metrics for one plan."""
     checks: dict[str, str] = {}
     words = len(plan.split())
@@ -119,6 +119,13 @@ def score_plan(plan: str) -> dict:
             checks[name] = SKIP
         unverified = []
 
+    if tree.for_ruleset(ruleset):
+        tree_issues = tree.path_issues(plan, ruleset)
+        checks["paths_follow_the_tree"] = PASS if not tree_issues else FAIL
+    else:
+        checks["paths_follow_the_tree"] = SKIP
+        tree_issues = []
+
     tripped = [
         {"id": wid, "note": note, "text": m.group(0)[:120]}
         for wid, pattern, note in KNOWN_WRONG
@@ -133,6 +140,7 @@ def score_plan(plan: str) -> dict:
         "playbook_bullets": playbook,
         "benchmark_turns": benchmark_turns(plan),
         "unverified": unverified,
+        "tree_issues": tree_issues,
         "known_wrong": tripped,
     }
 

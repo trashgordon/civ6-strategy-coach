@@ -303,3 +303,11 @@ def test_stats_endpoint_summarises_the_archive(client, sample_config, stub_llm):
     assert (civs["Korea"]["won"], civs["Korea"]["lost"]) == (1, 1)
     assert civs["Rome"]["win_rate"] == 1.0
     assert stats["mean_winning_turn"] == 240
+
+
+def test_builds_carry_the_tree_check(client, sample_config, stub_llm):
+    """Always present, so the UI never has to guess; empty when there's nothing to say."""
+    build = client.post("/api/generate", json={"config": sample_config}).json()
+    assert isinstance(build["tree_issues"], list)
+    fetched = client.get(f"/api/builds/{build['id']}").json()
+    assert fetched["tree_issues"] == build["tree_issues"]

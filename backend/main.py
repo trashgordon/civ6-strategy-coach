@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, config, db, facts, generation, llm, prompts, summarize, titles
+from . import auth, config, db, facts, generation, llm, prompts, summarize, titles, tree
 
 log = logging.getLogger("civ6")
 
@@ -225,10 +225,18 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
         cache_write_tokens=result.cache_write_tokens,
         cache_read_tokens=result.cache_read_tokens,
     )
+    return _with_checks(build)
+
+
+def _with_checks(build: dict[str, Any]) -> dict[str, Any]:
+    """Usage plus the grounding checks. Both checks are empty when no facts are
+    installed — we don't flag what we can't check."""
+    plan = build["generated_plan"]
     build["usage"] = db.usage_for_build(build["id"])
-    # Names the coach asserted that aren't in the installed game data. Empty when no
-    # facts are installed — we don't flag what we can't check.
-    build["unverified_names"] = facts.unverified_names(result.text)
+    # Names the coach asserted that aren't in the installed game data.
+    build["unverified_names"] = facts.unverified_names(plan)
+    # Tech/civic paths out of order, in the wrong tree, or crediting the wrong unlock.
+    build["tree_issues"] = tree.path_issues(plan, build.get("ruleset"))
     return build
 
 
@@ -251,9 +259,7 @@ def get_build(build_id: int) -> dict[str, Any]:
     build = db.get_build(build_id)
     if build is None:
         raise HTTPException(status_code=404, detail="No build with that id")
-    build["usage"] = db.usage_for_build(build_id)
-    build["unverified_names"] = facts.unverified_names(build["generated_plan"])
-    return build
+    return _with_checks(build)
 
 
 @app.patch("/api/builds/{build_id}", dependencies=[Depends(require_auth)])
@@ -270,9 +276,7 @@ def update_build(build_id: int, payload: BuildUpdate) -> dict[str, Any]:
         end_turn=payload.end_turn or None,
         clear_end_turn=payload.end_turn == 0,
     )
-    build["usage"] = db.usage_for_build(build_id)
-    build["unverified_names"] = facts.unverified_names(build["generated_plan"])
-    return build
+    return _with_checks(build)
 
 
 @app.delete("/api/builds/{build_id}", dependencies=[Depends(require_auth)])

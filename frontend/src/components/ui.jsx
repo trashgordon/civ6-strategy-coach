@@ -367,6 +367,35 @@ export function UnverifiedNames({ names }) {
   );
 }
 
+export function TreeIssues({ issues }) {
+  if (!issues || !issues.length) return null;
+  return (
+    <div
+      role="note"
+      style={{
+        border: `1px solid color-mix(in srgb, ${T.warn} 50%, transparent)`,
+        background: T.warnSoft,
+        borderRadius: "6px",
+        padding: "0.6rem 0.85rem",
+        margin: "0 0 1rem",
+        fontSize: "0.85rem",
+        lineHeight: 1.55,
+        color: T.text,
+      }}
+    >
+      <strong style={{ color: T.warn, fontWeight: 600 }}>⚠ Doesn't match your game's tech &amp; civic trees:</strong>
+      <ul style={{ margin: "0.3rem 0 0", paddingLeft: "1.1rem" }}>
+        {issues.map((issue) => (
+          <li key={issue}>{issue}</li>
+        ))}
+      </ul>
+      <div style={{ color: T.muted, marginTop: "0.2rem" }}>
+        Checked against the ruleset this briefing was set up for. Trust the tree over the plan.
+      </div>
+    </div>
+  );
+}
+
 const OUTCOME_TONES = {
   won: { color: T.ok, label: "Won" },
   lost: { color: T.danger, label: "Lost" },
