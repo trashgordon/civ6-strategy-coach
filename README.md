@@ -55,7 +55,8 @@ python -m backend.run
 
 That builds the frontend the first time (running `npm install && npm run build` for you),
 starts the server on <http://localhost:8000>, and opens your browser. Later starts skip
-the build and come up immediately; pass `--rebuild` after you pull frontend changes.
+the build unless a pull changed the frontend source, in which case it rebuilds first
+(`--rebuild` forces one).
 
 ## Bring your own key
 
