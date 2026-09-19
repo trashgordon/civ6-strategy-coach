@@ -177,7 +177,7 @@ def compare_row(build: dict) -> dict:
     return {
         "id": build.get("id"),
         "title": build.get("title") or "Untitled",
-        "civ": build.get("civ") or "",
+        "civ": build.get("played_civ") or build.get("civ") or "",
         "primary_focus": build.get("primary_focus") or "",
         "posture": build.get("posture") or "",
         "city_philosophy": build.get("city_philosophy") or "",

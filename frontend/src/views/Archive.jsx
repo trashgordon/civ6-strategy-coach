@@ -39,7 +39,7 @@ function BuildRow({ build, active, onSelect }) {
             victoryType={build.victory_type}
             endTurn={build.end_turn}
           />
-          {build.civ && <Tag tone="brass">{build.civ}</Tag>}
+          {build.played_civ && <Tag tone="brass">{build.played_civ}</Tag>}
         </span>
       </div>
       <div
@@ -397,7 +397,7 @@ export default function Archive({
                   </>
                 )}
                 {[
-                  selected.civ,
+                  selected.played_civ,
                   selected.primary_focus,
                   selected.city_philosophy,
                   selected.posture,

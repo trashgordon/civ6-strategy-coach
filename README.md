@@ -258,7 +258,8 @@ A plan is only advice until you know whether it worked. Open a build in the Arch
 **Log result** — won, lost or abandoned, the victory type, the turn it ended — and the
 **Stats** tab turns the archive into a record: win rate overall and broken down by civ,
 focus, city philosophy, posture, map and difficulty, plus victories by type and your
-average winning turn.
+average winning turn. When you leave the civ to the coach, its pick counts as the civ
+you played.
 
 To see the Stats view with something in it before you've logged any games:
 

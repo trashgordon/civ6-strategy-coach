@@ -5,6 +5,18 @@ import sqlite3
 from backend import db
 
 
+
+def _legacy_build(conn, *, title, civ, plan, playstyle_text="tech", **extra):
+    """Insert a row using only the v1 columns, as a pre-upgrade release would have."""
+    with conn:
+        cursor = conn.execute(
+            "INSERT INTO saved_builds (created_at, title, civ, city_philosophy, "
+            "primary_focus, playstyle_text, generated_plan) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("2026-01-01T00:00:00+00:00", title, civ, extra.get("city_philosophy", "Tall"),
+             extra.get("primary_focus", "Science"), playstyle_text, plan),
+        )
+    return {"id": cursor.lastrowid}
+
 def test_migrate_creates_the_schema_and_stamps_the_version():
     assert db.migrate() == db.CURRENT_VERSION
     conn = db.connect()
@@ -15,7 +27,7 @@ def test_migrate_creates_the_schema_and_stamps_the_version():
         "id", "created_at", "title", "ruleset", "difficulty", "map_type",
         "config_json", "civ", "city_philosophy", "primary_focus", "posture",
         "playstyle_text", "generated_plan", "notes",
-        "outcome", "victory_type", "end_turn",
+        "outcome", "victory_type", "end_turn", "recommended_civ",
     }
 
 
@@ -82,10 +94,9 @@ def test_a_v1_database_upgrades_to_v2_without_losing_builds():
     with conn:
         conn.executescript(db.SCHEMA_V1)
         conn.execute("PRAGMA user_version = 1")
-    saved = db.insert_build(
-        title="Korea — Science", config_dict={"ruleset": "Gathering Storm"},
-        civ="Korea", city_philosophy="Tall", primary_focus="Science",
-        posture="", playstyle_text="tech and turtle", generated_plan="## Plan\n**Korea**",
+    saved = _legacy_build(
+        conn, title="Korea — Science", civ="Korea", playstyle_text="tech and turtle",
+        plan="## Plan\n**Korea**",
     )
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
     tables_before = {
@@ -155,10 +166,8 @@ def test_a_v3_database_gains_notes_without_losing_builds():
         conn.executescript(db.SCHEMA_V2)
         conn.executescript(db.SCHEMA_V3)
         conn.execute("PRAGMA user_version = 3")
-    saved = db.insert_build(
-        title="Korea — Science", config_dict={}, civ="Korea", city_philosophy="Tall",
-        primary_focus="Science", posture="", playstyle_text="tech",
-        generated_plan="## Civ & Leader\n**Korea**",
+    saved = _legacy_build(
+        conn, title="Korea — Science", civ="Korea", plan="## Civ & Leader\n**Korea**",
     )
 
     assert db.migrate() == db.CURRENT_VERSION
@@ -190,12 +199,12 @@ def test_a_v4_database_gains_outcome_columns_without_losing_builds():
         for schema in (db.SCHEMA_V1, db.SCHEMA_V2, db.SCHEMA_V3, db.SCHEMA_V4):
             conn.executescript(schema)
         conn.execute("PRAGMA user_version = 4")
-    saved = db.insert_build(
-        title="Korea — Science", config_dict={}, civ="Korea", city_philosophy="Tall",
-        primary_focus="Science", posture="", playstyle_text="tech",
-        generated_plan="## Civ & Leader\n**Korea**",
+    saved = _legacy_build(
+        conn, title="Korea — Science", civ="Korea", plan="## Civ & Leader\n**Korea**",
     )
-    db.update_build(saved["id"], notes="turn 40 notes")
+    with conn:
+        conn.execute("UPDATE saved_builds SET notes = 'turn 40 notes' WHERE id = ?",
+                     (saved["id"],))
 
     assert db.migrate() == db.CURRENT_VERSION
 
@@ -290,3 +299,42 @@ def test_dimensions_omit_values_with_nothing_decided():
     assert civs == ["Korea"]
     # Still counted in the overall tally.
     assert db.outcome_stats()["overall"]["abandoned"] == 1
+
+
+def test_the_coachs_pick_counts_as_the_civ_played():
+    """Most briefings leave the civ to the coach; stats should still know who you played."""
+    db.migrate()
+    picked = db.insert_build(
+        title="x", config_dict={}, civ="", city_philosophy="", primary_focus="",
+        posture="", playstyle_text="", generated_plan="## Civ & Leader\n**Korea — Seondeok**",
+    )
+    chosen = db.insert_build(
+        title="y", config_dict={}, civ="Rome", city_philosophy="", primary_focus="",
+        posture="", playstyle_text="", generated_plan="## Civ & Leader\n**Korea**",
+    )
+    assert picked["recommended_civ"] == "Korea"
+    assert picked["played_civ"] == "Korea"
+    # A civ the player chose wins over whatever the plan says.
+    assert chosen["played_civ"] == "Rome"
+
+    db.update_build(picked["id"], outcome="won")
+    db.update_build(chosen["id"], outcome="lost")
+    civs = {e["value"] for e in db.outcome_stats()["by_dimension"]["civ"]["entries"]}
+    assert civs == {"Korea", "Rome"}
+    assert [b["id"] for b in db.list_builds(civ="Korea")] == [picked["id"]]
+    assert set(db.distinct_values("civ")) == {"Korea", "Rome"}
+
+
+def test_a_v5_database_backfills_the_coachs_pick_from_saved_plans():
+    conn = db.connect()
+    with conn:
+        for schema in (db.SCHEMA_V1, db.SCHEMA_V2, db.SCHEMA_V3, db.SCHEMA_V4, db.SCHEMA_V5):
+            conn.executescript(schema)
+        conn.execute("PRAGMA user_version = 5")
+    korea = _legacy_build(conn, title="a", civ="", plan="## Civ & Leader\n**Korea — Seondeok**")
+    prose = _legacy_build(conn, title="b", civ="", plan="p")
+
+    assert db.migrate() == db.CURRENT_VERSION
+    assert db.get_build(korea["id"])["recommended_civ"] == "Korea"
+    # Nothing recognisable in the plan: leave it blank rather than guess.
+    assert db.get_build(prose["id"])["recommended_civ"] == ""

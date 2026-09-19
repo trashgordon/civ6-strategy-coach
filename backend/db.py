@@ -71,6 +71,16 @@ ALTER TABLE saved_builds ADD COLUMN victory_type TEXT NOT NULL DEFAULT '';
 ALTER TABLE saved_builds ADD COLUMN end_turn INTEGER;
 """
 
+# The civ the coach recommended. Most briefings leave the civ to the coach, so without
+# this a build's `civ` is blank and it vanishes from every per-civ breakdown.
+SCHEMA_V6 = """
+ALTER TABLE saved_builds ADD COLUMN recommended_civ TEXT NOT NULL DEFAULT '';
+"""
+
+# The civ a build was actually played as: the player's pick when they made one,
+# otherwise the coach's. Used wherever a build is grouped, filtered or shown by civ.
+PLAYED_CIV = "COALESCE(NULLIF(civ, ''), NULLIF(recommended_civ, ''), '')"
+
 # version -> SQL to reach that version. Append only.
 MIGRATIONS: list[tuple[int, str]] = [
     (1, SCHEMA_V1),
@@ -78,6 +88,7 @@ MIGRATIONS: list[tuple[int, str]] = [
     (3, SCHEMA_V3),
     (4, SCHEMA_V4),
     (5, SCHEMA_V5),
+    (6, SCHEMA_V6),
 ]
 
 OUTCOMES = ("won", "lost", "abandoned")
@@ -107,6 +118,31 @@ def close() -> None:
         _local.conn = None
 
 
+def recommended_civ_from_plan(plan: str) -> str:
+    """The coach's pick, but only when it's a civ we recognise — never a prose guess."""
+    from .gamedata import match_civ  # local imports: neither module needs db
+    from .titles import civ_from_plan
+
+    return match_civ(civ_from_plan(plan)) or ""
+
+
+def _backfill_recommended_civ(conn: sqlite3.Connection) -> None:
+    """Read the coach's pick back out of every plan saved before v6 stored it."""
+    rows = conn.execute(
+        "SELECT id, generated_plan FROM saved_builds WHERE recommended_civ = ''"
+    ).fetchall()
+    for row in rows:
+        civ = recommended_civ_from_plan(row["generated_plan"] or "")
+        if civ:
+            conn.execute(
+                "UPDATE saved_builds SET recommended_civ = ? WHERE id = ?", (civ, row["id"])
+            )
+
+
+# Data changes that have to run in Python, once, straight after a version's SQL.
+BACKFILLS = {6: _backfill_recommended_civ}
+
+
 def migrate() -> int:
     """Bring the database up to CURRENT_VERSION. Safe to call on every startup."""
     conn = connect()
@@ -116,6 +152,8 @@ def migrate() -> int:
             continue
         with conn:
             conn.executescript(sql)
+            if target in BACKFILLS:
+                BACKFILLS[target](conn)
             conn.execute(f"PRAGMA user_version = {target}")
         version = target
     return version
@@ -140,6 +178,7 @@ def _row_to_build(row: sqlite3.Row, include_plan: bool = True) -> dict[str, Any]
         "primary_focus": row["primary_focus"],
         "posture": row["posture"],
         "playstyle_text": row["playstyle_text"],
+        "recommended_civ": row["recommended_civ"] if "recommended_civ" in row.keys() else "",
         "notes": row["notes"] if "notes" in row.keys() else "",
         "outcome": row["outcome"] if "outcome" in row.keys() else "",
         "victory_type": row["victory_type"] if "victory_type" in row.keys() else "",
@@ -147,6 +186,7 @@ def _row_to_build(row: sqlite3.Row, include_plan: bool = True) -> dict[str, Any]
     }
     if include_plan:
         build["generated_plan"] = row["generated_plan"]
+    build["played_civ"] = build["civ"] or build["recommended_civ"]
     return build
 
 
@@ -160,7 +200,10 @@ def insert_build(
     posture: str,
     playstyle_text: str,
     generated_plan: str,
+    recommended_civ: str | None = None,
 ) -> dict[str, Any]:
+    if recommended_civ is None:
+        recommended_civ = recommended_civ_from_plan(generated_plan or "")
     conn = connect()
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with conn:
@@ -168,8 +211,9 @@ def insert_build(
             """
             INSERT INTO saved_builds (
                 created_at, title, ruleset, difficulty, map_type, config_json,
-                civ, city_philosophy, primary_focus, posture, playstyle_text, generated_plan
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                civ, city_philosophy, primary_focus, posture, playstyle_text, generated_plan,
+                recommended_civ
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 created_at,
@@ -184,6 +228,7 @@ def insert_build(
                 posture or "",
                 playstyle_text or "",
                 generated_plan or "",
+                recommended_civ or "",
             ),
         )
     return get_build(cursor.lastrowid)  # type: ignore[arg-type]
@@ -208,7 +253,7 @@ def list_builds(
         )
         params.extend([needle] * 4)
     if civ.strip():
-        where.append("civ = ?")
+        where.append(f"{PLAYED_CIV} = ?")
         params.append(civ.strip())
     if primary_focus.strip():
         where.append("primary_focus = ?")
@@ -303,9 +348,10 @@ def distinct_values(column: str) -> list[str]:
     """Used to populate the archive's filter dropdowns with only what's actually saved."""
     if column not in {"civ", "primary_focus", "posture", "city_philosophy", "ruleset"}:
         raise ValueError(f"not a filterable column: {column}")
+    expression = PLAYED_CIV if column == "civ" else column
     rows = connect().execute(
-        f"SELECT DISTINCT {column} AS value FROM saved_builds "
-        f"WHERE {column} != '' ORDER BY value COLLATE NOCASE"
+        f"SELECT DISTINCT {expression} AS value FROM saved_builds "
+        f"WHERE {expression} != '' ORDER BY value COLLATE NOCASE"
     ).fetchall()
     return [row["value"] for row in rows]
 
@@ -431,13 +477,14 @@ def recent_api_calls(limit: int = 50) -> list[dict[str, Any]]:
 
 # Dimensions the stats view can break results down by. Keyed by the column, since
 # these are all plain columns on saved_builds.
+# (key in the API response, SQL expression to group by, label)
 STAT_DIMENSIONS = (
-    ("civ", "Civ"),
-    ("primary_focus", "Focus"),
-    ("city_philosophy", "City philosophy"),
-    ("posture", "Posture"),
-    ("map_type", "Map"),
-    ("difficulty", "Difficulty"),
+    ("civ", PLAYED_CIV, "Civ played"),
+    ("primary_focus", "primary_focus", "Focus"),
+    ("city_philosophy", "city_philosophy", "City philosophy"),
+    ("posture", "posture", "Posture"),
+    ("map_type", "map_type", "Map"),
+    ("difficulty", "difficulty", "Difficulty"),
 )
 
 _UNSET = ("", "No preference")
@@ -479,7 +526,7 @@ def outcome_stats() -> dict[str, Any]:
     overall["win_rate"] = _rate(overall["won"], overall["lost"])
 
     by_dimension: dict[str, Any] = {}
-    for column, label in STAT_DIMENSIONS:
+    for key, column, label in STAT_DIMENSIONS:
         rows = conn.execute(
             f"""
             SELECT {column} AS value,
@@ -517,7 +564,7 @@ def outcome_stats() -> dict[str, Any]:
         entries.sort(
             key=lambda e: (e["won"] + e["lost"], e["win_rate"] or 0), reverse=True
         )
-        by_dimension[column] = {"label": label, "entries": entries}
+        by_dimension[key] = {"label": label, "entries": entries}
 
     victories = [
         {"victory_type": row["victory_type"], "count": row["n"]}

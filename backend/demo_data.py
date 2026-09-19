@@ -89,11 +89,13 @@ def generate(path: Path, count: int, seed: int) -> dict:
             "seaLevel": "Standard", "modes": {"monopolies": True, "sukritactOceans": True},
         }
 
+        # Most real briefings leave the civ to the coach, so most demo ones do too.
+        chosen = civ if rng.random() < 0.2 else ""
         build = db.insert_build(
             title=titles.suggest_title(civ=civ, city_philosophy=philosophy,
                                        primary_focus=focus, posture=posture, plan=""),
-            config_dict=cfg, civ=civ, city_philosophy=philosophy, primary_focus=focus,
-            posture=posture, playstyle_text="", generated_plan=DEMO_PLAN,
+            config_dict=cfg, civ=chosen, city_philosophy=philosophy, primary_focus=focus,
+            posture=posture, playstyle_text="", generated_plan=DEMO_PLAN, recommended_civ=civ,
         )
 
         roll = rng.random()
