@@ -46,6 +46,11 @@ def fingerprint() -> dict:
         "reasoning_effort": llm.REASONING_EFFORT,
         "pipeline": generation.pipeline(),
         "prompt_sha": hashlib.sha256(prompts.BUILD_SYSTEM_PROMPT.encode()).hexdigest()[:10],
+        # The staged pipeline's own instructions: a change to the strategist or writer
+        # is a prompt change too, and read as "nothing changed" without this.
+        "stage_prompts_sha": hashlib.sha256(
+            (prompts.STRATEGIST_TASK + "\0" + prompts.WRITER_TASK).encode()
+        ).hexdigest()[:10],
         "grounded_prompt_sha": hashlib.sha256(grounded.encode()).hexdigest()[:10],
         "facts_available": facts.available(),
         "briefs_sha": hashlib.sha256(BRIEFS.read_bytes()).hexdigest()[:10],
@@ -210,7 +215,7 @@ def print_report(summary: dict, fp: dict, before: dict | None) -> None:
 
     if before:
         changed = [k for k in ("model", "reasoning_effort", "pipeline", "prompt_sha",
-                               "grounded_prompt_sha", "briefs_sha")
+                               "stage_prompts_sha", "grounded_prompt_sha", "briefs_sha")
                    if before.get("fingerprint", {}).get(k) != fp.get(k)]
         print(f"\n  compared with {before.get('started_at', 'previous run')}; changed since: "
               f"{', '.join(changed) or 'nothing — same prompt, model and briefs'}")

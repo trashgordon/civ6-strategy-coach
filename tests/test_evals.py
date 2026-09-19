@@ -141,3 +141,12 @@ def test_every_prompt_in_the_code_is_verbatim_in_the_brief():
     brief = (Path(__file__).resolve().parents[1] / "civ6-app-brief.md").read_text()
     for name in ("BUILD_SYSTEM_PROMPT", "COMPARE_SYSTEM_PROMPT", "STRATEGIST_TASK", "WRITER_TASK"):
         assert getattr(prompts, name) in brief, name
+
+
+def test_a_change_to_the_stage_instructions_shows_in_the_fingerprint(monkeypatch):
+    from backend import prompts
+    from evals import run
+
+    before = run.fingerprint()["stage_prompts_sha"]
+    monkeypatch.setattr(prompts, "WRITER_TASK", prompts.WRITER_TASK + " Be brief.")
+    assert run.fingerprint()["stage_prompts_sha"] != before
