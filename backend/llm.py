@@ -57,6 +57,8 @@ class Completion:
     # a plan with its last sections missing. On a reasoning model the usual cause is
     # thinking eating the budget.
     truncated: bool = False
+    # Anything a multi-call pipeline wants to report about how it got here.
+    detail: dict | None = None
 
 
 # Provider prefix -> the env var LiteLLM expects for it. Only used to give a useful
@@ -93,7 +95,13 @@ def missing_key_hint() -> str | None:
     return None
 
 
-async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Completion:
+async def complete(
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int,
+    reasoning_effort: str | None = None,
+) -> Completion:
+    """One model call. `reasoning_effort` overrides REASONING_EFFORT for this call only."""
     hint = missing_key_hint()
     if hint:
         raise LLMError(
@@ -117,7 +125,7 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Com
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=max_tokens,
-            reasoning_effort=REASONING_EFFORT,
+            reasoning_effort=reasoning_effort or REASONING_EFFORT,
         )
     except Exception as exc:  # LiteLLM raises a wide family of provider errors
         raise LLMError(f"The model call failed: {exc}") from exc

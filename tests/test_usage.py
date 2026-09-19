@@ -27,6 +27,7 @@ def test_generate_records_tokens_and_cost(client, sample_config, stub_llm):
         "prompt_tokens": 1182,
         "completion_tokens": 878,
         "cost_usd": 0.0167,
+        "calls": 1,
     }
     # ...and still there when the build is fetched later.
     assert client.get(f"/api/builds/{build['id']}").json()["usage"] == build["usage"]
@@ -71,6 +72,7 @@ def test_a_model_with_no_price_is_still_logged(
         "prompt_tokens": None,
         "completion_tokens": None,
         "cost_usd": None,
+        "calls": 1,
     }
 
     totals = client.get("/api/usage").json()

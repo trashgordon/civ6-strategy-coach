@@ -213,18 +213,22 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
         playstyle_text=payload.playstyle_text,
         generated_plan=generation.tidy_headers(result.text),
         truncated=result.truncated,
+        decisions=(result.detail or {}).get("decisions"),
     )
 
-    db.insert_api_call(
-        kind=db.GENERATE,
-        build_id=build["id"],
-        model=result.model,
-        prompt_tokens=result.prompt_tokens,
-        completion_tokens=result.completion_tokens,
-        cost_usd=result.cost_usd,
-        cache_write_tokens=result.cache_write_tokens,
-        cache_read_tokens=result.cache_read_tokens,
-    )
+    detail = result.detail or {}
+    # One row per model call: the staged pipeline makes several, and each is real spend.
+    for call in detail.get("calls") or [vars(result)]:
+        db.insert_api_call(
+            kind=db.GENERATE,
+            build_id=build["id"],
+            model=call.get("model") or result.model,
+            prompt_tokens=call.get("prompt_tokens"),
+            completion_tokens=call.get("completion_tokens"),
+            cost_usd=call.get("cost_usd"),
+            cache_write_tokens=call.get("cache_write_tokens"),
+            cache_read_tokens=call.get("cache_read_tokens"),
+        )
     return _with_checks(build)
 
 

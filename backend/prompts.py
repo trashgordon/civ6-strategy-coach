@@ -51,6 +51,33 @@ COMPARE_SYSTEM_PROMPT = """You are the same Civilization VI coach. You'll be giv
 Stay specific and opinionated, same voice as always. Keep it under 400 words."""
 
 
+# The staged pipeline (backend/staged.py). Both go in the user turn, after the build
+# prompt above, so every stage shares that prompt's cached prefix.
+STRATEGIST_TASK = """Before anyone writes this plan, decide it. Reply with only a JSON object — no prose, no markdown fences — in exactly this shape:
+
+{
+  "civ": "the civilization", "leader": "its leader", "victory": "the victory type you're playing for",
+  "why": "one sentence: why this civ for this player",
+  "tech_path": ["technologies in the order to research them — key targets, not every tech"],
+  "civic_path": ["civics in order, the same way"],
+  "governments": ["governments in the order you'll adopt them"],
+  "policy_cards": ["the policy cards that matter most"],
+  "wonders": [{"name": "", "city": "", "start_turn": 0, "backup": "what to do if an AI finishes it first"}],
+  "wonder_to_skip": "one tempting wonder this build should skip",
+  "city_states": [{"name": "", "envoys": 0}],
+  "governors": [{"name": "", "city": "", "promotions": [""]}],
+  "benchmarks": [{"turn": 0, "milestone": ""}]
+}
+
+Rules: every name must appear exactly as written in the game data above. A technology or civic must come after everything it needs, and techs go only in tech_path, civics only in civic_path. A governor's promotions must be that governor's own. Benchmark turns must rise, and be pitched to the configured game speed. Decide one civ and commit to it."""
+
+WRITER_TASK = """The plan below has already been decided and checked against the game data. Write the full build plan from it. Keep every decision exactly as given — the civ, both paths and their order, the governments, cards, wonders, city-states, governors and promotions, and the benchmark turns. Explain and justify them in your own voice; don't add, drop, reorder or swap any of them. Anything the decisions don't cover (layout, beliefs, dedications, what goes wrong, the playbook) is yours to write, consistent with them.
+
+The word limit still applies, so don't justify every item: write each path as a compact arrow chain with a note only on the steps that matter, and spend your words on the few decisions that make this build work. Don't say what a tech or civic unlocks unless the game data above says so.
+
+Decided plan:
+"""
+
 # Mode keys -> the labels the game itself uses, so the coach reads them the way a
 # player would. Mirrors MODES in the frontend.
 MODE_LABELS = {

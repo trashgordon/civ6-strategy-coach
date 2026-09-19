@@ -1,5 +1,7 @@
 """The eval harness's scorer. If this is wrong, every eval number is wrong."""
 
+from pathlib import Path
+
 import pytest
 
 from backend import facts
@@ -131,3 +133,11 @@ def test_summary_counts_pass_rates_and_tripwires():
     assert summary["check_pass_rates"]["no_known_wrong_claims"] == 0.5
     assert summary["known_wrong_tripped"] == {"corvee-misattributed": 1}
     assert summary["cost_usd"] == 0.06
+
+
+def test_every_prompt_in_the_code_is_verbatim_in_the_brief():
+    """The brief is the source of truth for the coach's words; the code must not drift."""
+    from backend import prompts
+    brief = (Path(__file__).resolve().parents[1] / "civ6-app-brief.md").read_text()
+    for name in ("BUILD_SYSTEM_PROMPT", "COMPARE_SYSTEM_PROMPT", "STRATEGIST_TASK", "WRITER_TASK"):
+        assert getattr(prompts, name) in brief, name

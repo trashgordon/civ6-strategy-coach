@@ -94,6 +94,7 @@ All of it optional except the model and its key.
 | `MODEL` | `anthropic/claude-sonnet-5` | LiteLLM model string |
 | *provider key* | — | e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` |
 | `REASONING_EFFORT` | `medium` | Reasoning depth on models that reason (see below) |
+| `PIPELINE` | `staged` | `staged` decides, checks, then writes; `single` is one call (see below) |
 | `PLAN_MAX_TOKENS` | by effort | Output cap for a plan: 6,000 at `low`, 12,000 at `medium`/`high` |
 | `PROMPT_CACHE` | `1` | Cache the game-facts prompt prefix (see below) |
 | `CIV6_PATH` | auto-detected | Your Civ VI install, for game-data grounding |
@@ -259,10 +260,38 @@ reachable from the internet.
 ```
 frontend/  React + Vite, built to static files
 backend/   FastAPI — serves the API and those static files on one port
-  prompts.py     both system prompts, verbatim from the brief
-  llm.py         the single LiteLLM call
+  prompts.py     the system prompts and stage instructions, verbatim from the brief
+  staged.py      the default pipeline: decide, check, repair, write
+  llm.py         every LiteLLM call goes through here
   db.py          SQLite + PRAGMA user_version migrations (saved_builds, api_calls)
 ```
+
+### Decide, check, then write
+
+A plan is made in stages (`PIPELINE=staged`, the default). A **strategist** first decides
+the plan as JSON — civ, both paths in order, governments, cards, wonders, city-states,
+governors and promotions, benchmark turns. That's **checked exactly** against your game
+data: every name real, each path in prerequisite order and in the right tree, each
+promotion belonging to its governor, turns rising. Anything wrong goes back to the
+strategist with the specific errors, for up to two repair rounds. Then a **writer** — the
+coach's prompt from the brief, unchanged — turns the checked decisions into the plan.
+
+Checking prose afterwards means regex over sentences, tuned to stay quiet, and it can only
+flag what it catches. Checking decisions first is exact, and fixes them before you see
+them. On the eval, against a single call at `medium` effort:
+
+| | single call | staged |
+| --- | --- | --- |
+| Overall eval score | 95% | **97%** |
+| Path errors left in the plan | 2 | **0** (6 caught and fixed before writing) |
+| Time per plan | ~91 s | **~52 s** |
+| Cost per plan | ~$0.10 | **~$0.08** |
+
+It's faster and cheaper because the strategist writes a short JSON object rather than
+1,200 words, and the writer runs at `low` effort — the thinking is already done. Both
+steps share one cached prompt. The decisions are saved with each build, and the cost
+tracker records every call. `PIPELINE=single` goes back to one call (then
+`REASONING_EFFORT` applies to it).
 
 The three tabs map to three endpoints: `POST /api/generate` (generate + auto-save),
 `GET /api/builds` (archive, with search and filters), and `POST /api/compare` (the

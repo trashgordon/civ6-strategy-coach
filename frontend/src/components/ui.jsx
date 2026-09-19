@@ -332,6 +332,8 @@ export function UsageNote({ usage, style }) {
   if (inTokens && outTokens) parts.push(`${inTokens} in / ${outTokens} out`);
   // A null cost means the model isn't in the pricing table — say so rather than "$0".
   parts.push(cost ?? "cost unknown");
+  // The staged pipeline makes several calls; the figures above are their total.
+  if (usage.calls > 1) parts.push(`${usage.calls} calls`);
   return (
     <span
       style={{ color: T.muted, fontSize: "0.76rem", fontVariantNumeric: "tabular-nums", ...style }}

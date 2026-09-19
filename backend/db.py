@@ -82,6 +82,11 @@ SCHEMA_V7 = """
 ALTER TABLE saved_builds ADD COLUMN truncated INTEGER NOT NULL DEFAULT 0;
 """
 
+# The staged pipeline's checked decisions (JSON), kept beside the prose they produced.
+SCHEMA_V8 = """
+ALTER TABLE saved_builds ADD COLUMN decisions_json TEXT NOT NULL DEFAULT '';
+"""
+
 # The civ a build was actually played as: the player's pick when they made one,
 # otherwise the coach's. Used wherever a build is grouped, filtered or shown by civ.
 PLAYED_CIV = "COALESCE(NULLIF(civ, ''), NULLIF(recommended_civ, ''), '')"
@@ -95,6 +100,7 @@ MIGRATIONS: list[tuple[int, str]] = [
     (5, SCHEMA_V5),
     (6, SCHEMA_V6),
     (7, SCHEMA_V7),
+    (8, SCHEMA_V8),
 ]
 
 OUTCOMES = ("won", "lost", "abandoned")
@@ -165,6 +171,15 @@ def migrate() -> int:
     return version
 
 
+def _decisions(row: sqlite3.Row) -> dict | None:
+    raw = row["decisions_json"] if "decisions_json" in row.keys() else ""
+    try:
+        value = json.loads(raw) if raw else None
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def _row_to_build(row: sqlite3.Row, include_plan: bool = True) -> dict[str, Any]:
     try:
         parsed_config = json.loads(row["config_json"] or "{}")
@@ -190,6 +205,7 @@ def _row_to_build(row: sqlite3.Row, include_plan: bool = True) -> dict[str, Any]
         "victory_type": row["victory_type"] if "victory_type" in row.keys() else "",
         "end_turn": row["end_turn"] if "end_turn" in row.keys() else None,
         "truncated": bool(row["truncated"]) if "truncated" in row.keys() else False,
+        "decisions": _decisions(row),
     }
     if include_plan:
         build["generated_plan"] = row["generated_plan"]
@@ -209,6 +225,7 @@ def insert_build(
     generated_plan: str,
     recommended_civ: str | None = None,
     truncated: bool = False,
+    decisions: dict | None = None,
 ) -> dict[str, Any]:
     if recommended_civ is None:
         recommended_civ = recommended_civ_from_plan(generated_plan or "")
@@ -220,8 +237,8 @@ def insert_build(
             INSERT INTO saved_builds (
                 created_at, title, ruleset, difficulty, map_type, config_json,
                 civ, city_philosophy, primary_focus, posture, playstyle_text, generated_plan,
-                recommended_civ, truncated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                recommended_civ, truncated, decisions_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 created_at,
@@ -238,6 +255,7 @@ def insert_build(
                 generated_plan or "",
                 recommended_civ or "",
                 int(bool(truncated)),
+                json.dumps(decisions, ensure_ascii=False) if decisions else "",
             ),
         )
     return get_build(cursor.lastrowid)  # type: ignore[arg-type]
@@ -447,23 +465,27 @@ def usage_totals() -> dict[str, Any]:
 
 
 def usage_for_build(build_id: int) -> dict[str, Any] | None:
-    """What the call that produced this build cost. None if it predates tracking."""
+    """What producing this build cost, summed over every call it took (the staged
+    pipeline makes two or more). None if it predates tracking."""
     row = connect().execute(
         """
-        SELECT model, prompt_tokens, completion_tokens, cost_usd, created_at
+        SELECT COUNT(*) AS calls, MAX(model) AS model,
+               SUM(prompt_tokens) AS prompt_tokens,
+               SUM(completion_tokens) AS completion_tokens,
+               SUM(cost_usd) AS cost_usd
         FROM api_calls
         WHERE build_id = ? AND kind = ?
-        ORDER BY id DESC LIMIT 1
         """,
         (build_id, GENERATE),
     ).fetchone()
-    if row is None:
+    if row is None or not row["calls"]:
         return None
     return {
         "model": row["model"],
         "prompt_tokens": row["prompt_tokens"],
         "completion_tokens": row["completion_tokens"],
         "cost_usd": row["cost_usd"],
+        "calls": row["calls"],
     }
 
 

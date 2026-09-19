@@ -29,8 +29,8 @@ RESULTS = config.REPO_ROOT / "data" / "evals"
 
 # Rough, from measured runs on Claude Sonnet 5 with the full grounding block. Only used
 # for the up-front estimate; the real cost is read back from each response.
-# At REASONING_EFFORT=medium; roughly 0.13 / 0.035 at low.
-EST_COLD, EST_WARM = 0.16, 0.085
+# The staged pipeline (the default); roughly 0.16 / 0.10 for PIPELINE=single at medium.
+EST_COLD, EST_WARM = 0.16, 0.08
 
 
 def load_briefs() -> tuple[dict, list[dict]]:
@@ -44,6 +44,7 @@ def fingerprint() -> dict:
     return {
         "model": config.model(),
         "reasoning_effort": llm.REASONING_EFFORT,
+        "pipeline": generation.pipeline(),
         "prompt_sha": hashlib.sha256(prompts.BUILD_SYSTEM_PROMPT.encode()).hexdigest()[:10],
         "grounded_prompt_sha": hashlib.sha256(grounded.encode()).hexdigest()[:10],
         "facts_available": facts.available(),
@@ -88,6 +89,7 @@ async def run_one(base: dict, brief: dict, attempt: int) -> dict:
             "plan": result.text,
             "ruleset": cfg.get("ruleset"),
             "truncated": result.truncated,
+            "detail": result.detail,
             "score": scoring.score_plan(result.text, cfg.get("ruleset")),
         }
     )
@@ -207,7 +209,7 @@ def print_report(summary: dict, fp: dict, before: dict | None) -> None:
     print(f"  cost               ${summary['cost_usd']:.4f}")
 
     if before:
-        changed = [k for k in ("model", "reasoning_effort", "prompt_sha",
+        changed = [k for k in ("model", "reasoning_effort", "pipeline", "prompt_sha",
                                "grounded_prompt_sha", "briefs_sha")
                    if before.get("fingerprint", {}).get(k) != fp.get(k)]
         print(f"\n  compared with {before.get('started_at', 'previous run')}; changed since: "

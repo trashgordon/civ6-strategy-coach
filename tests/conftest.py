@@ -37,6 +37,9 @@ def isolated_env(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("APP_PASSWORD", raising=False)
     monkeypatch.setenv("MODEL", "anthropic/claude-sonnet-4-6")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-used")
+    # Most API tests stub a single model reply. The staged pipeline (the default) makes
+    # several calls and has its own tests in test_staged.py.
+    monkeypatch.setenv("PIPELINE", "single")
 
     from backend import db
 

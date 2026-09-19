@@ -28,6 +28,12 @@ the game's load order to build its tech/civic tree; `backend/tree.py` puts that 
 the prompt and checks the plan's paths against it. Every part of this must degrade to a
 silent no-op when `data/facts/` is absent.
 
+## Pipeline
+Plans are made in stages by default (`backend/staged.py`): a strategist decides the plan as
+JSON, it's checked exactly against the game data and repaired, then a writer turns it into
+prose. The stage instructions live in `prompts.py` and verbatim in the brief, like the
+system prompts. `PIPELINE=single` is the one-call path.
+
 ## Evals
 Measure prompt and grounding changes with `python -m evals.run` (costs ~$0.30; say so
 before running) rather than by reading one or two plans. Scoring changes don't need a
