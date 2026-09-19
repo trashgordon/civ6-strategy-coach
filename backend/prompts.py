@@ -73,7 +73,7 @@ Rules: every name must appear exactly as written in the game data above. A techn
 
 WRITER_TASK = """The plan below has already been decided and checked against the game data. Write the full build plan from it. Keep every decision exactly as given — the civ, both paths and their order, the governments, cards, wonders, city-states, governors and promotions, and the benchmark turns. Explain and justify them in your own voice; don't add, drop, reorder or swap any of them. Anything the decisions don't cover (layout, beliefs, dedications, what goes wrong, the playbook) is yours to write, consistent with them.
 
-The word limit still applies, so don't justify every item: write each path as a compact arrow chain with a note only on the steps that matter, and spend your words on the few decisions that make this build work. Don't say what a tech or civic unlocks unless the game data above says so.
+The word limit still applies, so don't justify every item: write each path as a compact arrow chain with a note only on the steps that matter, and spend your words on the few decisions that make this build work. Don't say what a tech or civic unlocks unless the game data above says so; "unlocked_by" in the decisions gives the answer for every wonder, government, card and unique in this plan.
 
 Decided plan:
 """

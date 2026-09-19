@@ -118,3 +118,41 @@ def test_a_staged_build_keeps_its_decisions_and_every_call_s_cost(game_data, mon
     assert build["usage"]["cost_usd"] == pytest.approx(0.02)
     # Still there when it's read back from the archive.
     assert client.get(f"/api/builds/{build['id']}").json()["decisions"] == GOOD
+
+
+def test_a_real_name_with_an_aside_is_still_that_name(game_data):
+    decisions = {**GOOD, "wonder_to_skip": "Colosseum (amenities this build doesn't need)",
+                 "tech_path": ["Mining", "Bronze Working (for Encampments)", "Iron Working"]}
+    assert staged.check_decisions(decisions, "Gathering Storm") == []
+
+
+def test_an_aside_does_not_rescue_a_made_up_name(game_data):
+    decisions = {**GOOD, "wonder_to_skip": "Colossus of Nowhere (tempting)"}
+    assert staged.check_decisions(decisions, "Gathering Storm") == [
+        "wonder_to_skip: 'Colossus of Nowhere (tempting)' isn't a wonder in Gathering Storm."
+    ]
+
+
+def test_a_name_that_merely_starts_like_a_real_one_is_not_it(game_data):
+    # "Mining" must not vouch for "Miningtown".
+    assert staged.check_decisions({**GOOD, "tech_path": ["Miningtown"]}, "Gathering Storm") == [
+        "tech_path: 'Miningtown' isn't a technology in Gathering Storm."
+    ]
+
+
+def test_the_writer_is_told_what_unlocks_each_decided_item(game_data, monkeypatch):
+    calls = _replies(monkeypatch, [json.dumps(GOOD), "## Civ & Leader\n**Rome**"])
+    asyncio.run(staged.draft_plan(config={"ruleset": "Gathering Storm"}, user_prompt="U", system_prompt="S"))
+    sent = json.loads(calls[-1]["user"].split("Decided plan:\n", 1)[1])
+    assert sent["unlocked_by"] == {
+        "Colosseum": "Games and Recreation (civic)",          # a decided wonder
+        "Classical Republic": "Political Philosophy (civic)",  # a decided government
+        "Discipline": "Code of Laws (civic)",                  # a decided card
+        "Legion": "Iron Working (tech)",                       # Rome's unique
+    }
+
+
+def test_the_saved_decisions_stay_as_decided(game_data, monkeypatch):
+    _replies(monkeypatch, [json.dumps(GOOD), "## Civ & Leader\n**Rome**"])
+    result = asyncio.run(staged.draft_plan(config={"ruleset": "Gathering Storm"}, user_prompt="U", system_prompt="S"))
+    assert "unlocked_by" not in result.detail["decisions"]

@@ -64,3 +64,14 @@ def test_an_unusual_plan_is_left_in_its_own_order(names):
 def test_text_before_the_first_header_stays_first():
     text = "Intro.\n\n## Tech Path\n- a\n\n## Civ & Leader\n- b\n"
     assert tidy_headers(text) == "Intro.\n\n## Civ & Leader\n- b\n\n## Tech Path\n- a\n"
+
+
+def test_a_bracket_naming_a_missing_section_is_that_section():
+    # Seen in an eval: Religious Beliefs written as "Wonders (Religious Beliefs)".
+    text = "## Wonders\n- w\n\n## Wonders (Religious Beliefs)\n- not a religious build\n"
+    assert tidy_headers(text) == "## Wonders\n- w\n\n## Religious Beliefs\n- not a religious build\n"
+
+
+def test_a_bracket_naming_a_section_that_exists_is_just_decoration():
+    text = "## Wonders (Religious Beliefs)\n- w\n\n## Religious Beliefs\n- r\n"
+    assert tidy_headers(text).startswith("## Wonders\n\nReligious Beliefs.\n- w")

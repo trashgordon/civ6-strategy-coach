@@ -60,6 +60,18 @@ def _lookup(names) -> dict[str, str]:
     return {_fold(n): n for n in names}
 
 
+def _known(raw: Any, lookup: dict[str, str]) -> str | None:
+    """The real name `raw` refers to: exact, or a real name followed by an aside —
+    "Petra (does nothing for a conquest game)" is Petra. Longest name wins."""
+    folded = _fold(raw)
+    if folded in lookup:
+        return lookup[folded]
+    for key in sorted(lookup, key=len, reverse=True):
+        if folded.startswith(key) and not folded[len(key):len(key) + 1].isalnum():
+            return lookup[key]
+    return None
+
+
 def _strings(value: Any) -> list[str]:
     return [str(v).strip() for v in value if str(v).strip()] if isinstance(value, list) else []
 
@@ -84,11 +96,11 @@ def check_decisions(decisions: dict, ruleset: str | None) -> list[str]:
             mine, theirs = _lookup(data.get(bucket, {})), _lookup(data.get(other, {}))
             path: list[str] = []
             for raw in _strings(decisions.get(key)):
-                name = mine.get(_fold(raw))
+                name = _known(raw, mine)
                 if name:
                     path.append(name)
-                elif _fold(raw) in theirs:
-                    errors.append(f"{key}: {theirs[_fold(raw)]} is a {label_other}, not a {label_one} — move it to the other path.")
+                elif _known(raw, theirs):
+                    errors.append(f"{key}: {_known(raw, theirs)} is a {label_other}, not a {label_one} — move it to the other path.")
                 else:
                     errors.append(f"{key}: {raw!r} isn't a {label_one} in {label}.")
             for i, name in enumerate(path):
@@ -99,24 +111,24 @@ def check_decisions(decisions: dict, ruleset: str | None) -> list[str]:
         wonders = _lookup(data.get("wonders", {}))
         for entry in decisions.get("wonders") or []:
             name = entry.get("name") if isinstance(entry, dict) else entry
-            if name and _fold(name) not in wonders:
+            if name and not _known(name, wonders):
                 errors.append(f"wonders: {name!r} isn't a wonder in {label}.")
         skip = decisions.get("wonder_to_skip")
-        if skip and _fold(skip) not in wonders:
+        if skip and not _known(skip, wonders):
             errors.append(f"wonder_to_skip: {skip!r} isn't a wonder in {label}.")
 
     for key, category in (("governments", "governments"), ("policy_cards", "policy_cards")):
         known = _lookup(loaded.get(category, ()))
         if known:
             for raw in _strings(decisions.get(key)):
-                if _fold(raw) not in known:
+                if not _known(raw, known):
                     errors.append(f"{key}: {raw!r} isn't a real {category.replace('_', ' ')[:-1]}.")
 
     states = _lookup(e["name"] for e in facts.city_states())
     if states:
         for entry in decisions.get("city_states") or []:
             name = entry.get("name") if isinstance(entry, dict) else entry
-            if name and _fold(name) not in states:
+            if name and not _known(name, states):
                 errors.append(f"city_states: {name!r} isn't a city-state in the game.")
 
     kits = {_fold(k["governor"]): k for k in facts.governor_kits()}
@@ -124,13 +136,13 @@ def check_decisions(decisions: dict, ruleset: str | None) -> list[str]:
         for entry in decisions.get("governors") or []:
             if not isinstance(entry, dict):
                 continue
-            kit = kits.get(_fold(entry.get("name", "")))
+            kit = kits.get(_fold(_known(entry.get("name", ""), {k: k for k in kits}) or ""))
             if kit is None:
                 errors.append(f"governors: {entry.get('name')!r} isn't a governor.")
                 continue
             own = _lookup(p["name"] for p in kit.get("promotions", []))
             for promo in _strings(entry.get("promotions")):
-                if _fold(promo) not in own:
+                if not _known(promo, own):
                     errors.append(
                         f"governors: {promo!r} isn't one of {kit['governor']}'s promotions "
                         f"(theirs: {', '.join(sorted(own.values()))})."
@@ -142,6 +154,38 @@ def check_decisions(decisions: dict, ruleset: str | None) -> list[str]:
     elif turns != sorted(turns):
         errors.append(f"benchmarks: turns must rise in order, got {turns}.")
     return errors
+
+
+def unlocks_for(decisions: dict, ruleset: str | None) -> dict[str, str]:
+    """What unlocks each decided wonder, government and card, and the civ's uniques.
+
+    The writer explains the decisions, and explaining a wonder invites saying what it
+    comes from — which it then recalled wrongly (Taj Mahal from Astronomy; it's
+    Humanism). Handing it the answer leaves nothing to recall.
+    """
+    data = tree.for_ruleset(ruleset if ruleset in RULESETS else DEFAULT_RULESET)
+    if not data:
+        return {}
+    items = {_fold(u["name"]): u for u in data.get("unlocks", [])}
+
+    def label(item: dict) -> str:
+        return f"{item['by']} ({'tech' if item['tree'] == 'technology' else 'civic'})"
+
+    named = [e.get("name") if isinstance(e, dict) else e for e in decisions.get("wonders") or []]
+    named += [decisions.get("wonder_to_skip")]
+    named += _strings(decisions.get("governments")) + _strings(decisions.get("policy_cards"))
+    out: dict[str, str] = {}
+    for raw in named:
+        if not raw:
+            continue
+        name = _known(raw, {k: k for k in items})
+        if name:
+            out[items[name]["name"]] = label(items[name])
+    civ = match_civ(str(decisions.get("civ", "")))
+    for item in data.get("unlocks", []):
+        if civ and match_civ(item.get("civ") or "") == civ:
+            out[item["name"]] = label(item)
+    return out
 
 
 # --------------------------------------------------------------------------- pipeline
@@ -195,9 +239,10 @@ async def draft_plan(*, config: dict, user_prompt: str, system_prompt: str) -> l
     if not decisions:
         raise llm.LLMError("The strategist never produced usable decisions. Try again.")
 
+    brief = {**decisions, "unlocked_by": unlocks_for(decisions, ruleset)}
     written = await llm.complete(
         system_prompt,
-        f"{user_prompt}\n\n{WRITER_TASK}{json.dumps(decisions, indent=1, ensure_ascii=False)}",
+        f"{user_prompt}\n\n{WRITER_TASK}{json.dumps(brief, indent=1, ensure_ascii=False)}",
         WRITER_TOKENS,
         reasoning_effort=WRITER_EFFORT,
     )

@@ -60,6 +60,7 @@ def tidy_headers(plan: str) -> str:
     """
     expected = prompts.expected_headers()
     lowered = {h.lower(): h for h in expected}
+    present = {h.lower() for h in _HEADER.findall(plan)}
 
     def fix(match: re.Match) -> str:
         raw = match.group(1)
@@ -75,6 +76,10 @@ def tidy_headers(plan: str) -> str:
             if not extra or extra[0] not in "(:—–-[":
                 continue  # "Governors & Titles" is a different header, not decoration
             extra = extra.strip(" ()[]:—–-").strip()
+            # "## Wonders (Religious Beliefs)" in Religious Beliefs' place: the bracket
+            # names the real section, and that section is otherwise missing.
+            if extra.lower() in lowered and extra.lower() not in present:
+                return f"## {lowered[extra.lower()]}"
             note = f"\n\n{extra[0].upper()}{extra[1:]}." if extra else ""
             return f"## {header}{note.rstrip('.') + '.' if note else ''}"
         return match.group(0)
