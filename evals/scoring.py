@@ -13,6 +13,8 @@ import re
 from statistics import median
 
 from backend import facts, prompts, tree
+from backend.gamedata import match_civ
+from backend.titles import civ_from_plan
 
 PASS, FAIL, SKIP = "pass", "fail", "skip"
 
@@ -125,6 +127,15 @@ def score_plan(plan: str, ruleset: str | None = None) -> dict:
     else:
         checks["paths_follow_the_tree"] = SKIP
         tree_issues = []
+
+    # Opening with one civ and playing another ("Korea is the clean pick… instead, take
+    # Germany") reads as indecision and used to mislabel the build.
+    opener = re.search(r"\*\*(.+?)\*\*", section(plan, "Civ & Leader"))
+    first = match_civ(opener.group(1)) if opener else None
+    played = civ_from_plan(plan)
+    checks["no_switched_pick"] = SKIP if not (first and played) else (
+        PASS if first == played else FAIL
+    )
 
     tripped = [
         {"id": wid, "note": note, "text": m.group(0)[:120]}

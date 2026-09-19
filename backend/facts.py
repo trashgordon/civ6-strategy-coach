@@ -419,6 +419,8 @@ _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _CHAIN = re.compile(r"\s*(?:→|->|➜|»)\s*")
 # Commas and slashes both introduce lists: "Irrigation, Mining", "Amsterdam/Venice".
 _LIST_SEPARATOR = re.compile(r"\s*[,/–]\s*|\s+and\s+")
+_ITEM_SEPARATOR = re.compile(r"\s*[,/–]\s*")
+_AND = re.compile(r"\s+and\s+")
 
 # Labels open with a condition — "**If Normal/Dark Age:**", "**During Golden Age:**".
 _LEADING_CONDITION = re.compile(r"^(?:if|when|during|in|for|once|after|before)\s+", re.I)
@@ -522,11 +524,17 @@ def _checkable_terms(piece: str, known: frozenset[str]) -> list[str]:
         return []
 
     parts = []
-    for raw in _LIST_SEPARATOR.split(term):
+    # Split on commas and slashes first, and on "and" only inside an item that isn't
+    # already a name — "Drama and Poetry, Recorded History" is two civics, not three.
+    for raw in _ITEM_SEPARATOR.split(term):
         item = re.sub(r"^\s*and\s+", "", raw.strip(), flags=re.IGNORECASE)
         item = item.strip(" .;:—–-*()")
-        if item:
+        if not item:
+            continue
+        if _recognised(item, known, allow_containment=False) or not _AND.search(item):
             parts.append(item)
+        else:
+            parts.extend(p.strip(" .;:—–-*()") for p in _AND.split(item) if p.strip())
     if len(parts) < 2 or not all(_looks_like_an_entity(p) for p in parts):
         # Not a list of names after all — report the whole run if it looked like one.
         return [term] if _looks_like_an_entity(term) else []

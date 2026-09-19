@@ -227,3 +227,16 @@ def test_the_eval_check_fails_a_plan_that_breaks_the_tree(installed_tree):
     score = scoring.score_plan(plan("- **Currency → Writing**"), "Gathering Storm")
     assert score["checks"]["paths_follow_the_tree"] == scoring.FAIL
     assert score["tree_issues"]
+
+
+def test_a_claim_belongs_to_the_chain_step_it_is_written_in(installed_tree):
+    # "into later civics" names no civic, so nothing earlier in the chain is credited.
+    assert issues(civic="- **Code of Laws → Early Empire → into later civics for Oligarchy**") == []
+    # ...but a claim made in a named step is still checked.
+    assert issues(civic="- **Code of Laws → Early Empire** for Oligarchy") == [
+        "Oligarchy is unlocked by Political Philosophy (civic), not Code of Laws or Early Empire."
+    ]
+
+
+def test_holding_out_for_an_unlock_is_not_a_claim_about_it(installed_tree):
+    assert issues(civic="- **Civil Service** (or hold for Oligarchy)") == []

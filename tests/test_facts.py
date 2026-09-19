@@ -524,3 +524,11 @@ def test_and_splitting_still_catches_an_invented_half(installed_facts):
 def test_a_name_containing_and_still_matches_whole(installed_facts):
     """Games and Recreation must not be split into "Games" and "Recreation"."""
     assert facts.unverified_names("**Games and Recreation**") == []
+
+
+def test_a_list_item_whose_name_contains_and_is_not_split(installed_facts):
+    (installed_facts / "civics.json").write_text(json.dumps(["Drama and Poetry", "Recorded History"]))
+    facts.reload()
+    assert facts.unverified_names("- **Drama and Poetry, Recorded History** for culture") == []
+    # An invented item beside it is still caught.
+    assert facts.unverified_names("- **Drama and Poetry, Recorded Mystery** early") == ["Recorded Mystery"]

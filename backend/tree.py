@@ -191,6 +191,7 @@ _CONNECTIVE = re.compile(r"\b(?:for|unlocks?|unlocking|to unlock|gets? you|gives
 _SPAN_END = re.compile(r"[.;:()—–]|,\s|\bthen\b")
 _SPAN_WORDS = 8
 _KEEPS_PAYING = {"district", "building", "improvement"}
+_WAITING = re.compile(r"\b(?:hold|holding|wait|waiting|save|saving)\s*$", re.IGNORECASE)
 
 
 # "for Seowon buffs", "for farm-adjacent Seowon prep": about a bonus, not the unlock.
@@ -281,6 +282,16 @@ def path_issues(plan: str, ruleset: str | None) -> list[str]:
 
             for clause in _CLAUSE.split(line):
                 for connective in _CONNECTIVE.finditer(clause):
+                    before = clause[: connective.start()]
+                    # The claim belongs to the chain step it's written in: in
+                    # "… → Urbanization → into Modern civics for X", nothing in the
+                    # step "into Modern civics" is said to unlock X.
+                    step = _ARROW.split(before)[-1]
+                    if not _found(index["tree_pattern"], index["tree_names"], step):
+                        continue
+                    # "hold for Merchant Republic" is waiting for it, not unlocking it.
+                    if _WAITING.search(before):
+                        continue
                     sources = {
                         entry[0]
                         for *_, entry in _found(

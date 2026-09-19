@@ -101,3 +101,78 @@ def test_skipped_techs_still_excluded():
 def test_bullet_leads_are_the_fallback_when_nothing_is_bolded():
     plan = "## Tech Path\n- Bronze Working for Legions\n- Iron Working next\n"
     assert summarize.key_techs_and_wonders(plan) == ["Bronze Working", "Iron Working"]
+
+
+SWITCHED = """## Civ & Leader
+
+**Korea (Seondeok)** is the clean pick for science. But you said "production-heavy",
+so instead, take **Germany (Frederick Barbarossa)**: Hansa districts pump out production.
+
+## Tech Path
+- **Apprenticeship** for Hansa
+
+## City & District Layout
+Every core city gets a Hansa next to its Commercial Hub.
+"""
+
+
+def test_a_pick_the_coach_switched_away_from_is_not_the_civ(no_tree):
+    assert titles.civ_from_plan(SWITCHED) == "Germany"
+
+
+def test_the_played_civ_is_the_one_whose_uniques_the_plan_uses(tree_with_uniques):
+    # No pivot phrase to go on — only the uniques give it away.
+    plan = SWITCHED.replace("so instead, take", "and")
+    assert titles.civ_from_plan(plan) == "Germany"
+
+
+def test_a_mentioned_alternative_does_not_steal_the_pick(tree_with_uniques):
+    plan = SWITCHED.replace(
+        '**Korea (Seondeok)** is the clean pick for science. But you said "production-heavy",\nso instead, take **Germany (Frederick Barbarossa)**',
+        "**Germany (Frederick Barbarossa)** is the pick. **Korea** is the runner-up",
+    )
+    assert titles.civ_from_plan(plan) == "Germany"
+    no_hansa = plan.split("## Tech Path")[0]
+    assert titles.civ_from_plan(no_hansa) == "Germany"   # nothing to go on: the first pick stands
+
+
+@pytest.fixture
+def no_tree(tmp_path, monkeypatch):
+    from backend import facts
+    monkeypatch.setattr(facts, "facts_dir", lambda: tmp_path / "nothing")
+    facts.reload()
+    yield
+    facts.reload()
+
+
+@pytest.fixture
+def tree_with_uniques(tmp_path, monkeypatch):
+    import json
+    from backend import facts
+    (tmp_path / "tree.json").write_text(json.dumps({"Gathering Storm": {
+        "technologies": {}, "civics": {},
+        "unlocks": [
+            {"name": "Hansa", "kind": "district", "by": "Apprenticeship", "tree": "technology", "civ": "Germany"},
+            {"name": "Seowon", "kind": "district", "by": "Writing", "tree": "technology", "civ": "Korea"},
+        ],
+    }}))
+    monkeypatch.setattr(facts, "facts_dir", lambda: tmp_path)
+    facts.reload()
+    yield
+    facts.reload()
+
+
+def test_a_scratched_first_pick_is_not_the_civ(no_tree):
+    plan = ("## Civ & Leader\n\n**Kupe / Māori** is not a religion pick — scratch that instinct. "
+            "For a religion build, go **Saladin of Arabia**.\n\n## Tech Path\n- x\n")
+    assert titles.civ_from_plan(plan) == "Arabia"
+
+
+@pytest.mark.parametrize("offer", [
+    "Runner-up: **Greece (Pericles)** if you want the textbook route.",
+    "If you'd rather go wide, take **Greece** instead.",
+    "Alternatively, go **Greece** for a faster start.",
+])
+def test_an_offered_runner_up_is_not_a_switch(no_tree, offer):
+    plan = f"## Civ & Leader\n\n**Georgia (Tamar)** fits tall culture. {offer}\n\n## Tech Path\n- x\n"
+    assert titles.civ_from_plan(plan) == "Georgia"
