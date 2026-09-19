@@ -211,7 +211,7 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
         primary_focus=payload.primary_focus,
         posture=payload.posture,
         playstyle_text=payload.playstyle_text,
-        generated_plan=result.text,
+        generated_plan=generation.tidy_headers(result.text),
         truncated=result.truncated,
     )
 

@@ -29,7 +29,9 @@ def test_generate_auto_saves_and_returns_the_build(client, sample_config, stub_l
     build = _generate(client, sample_config)
 
     assert build["id"] > 0
-    assert build["generated_plan"] == SAMPLE_PLAN
+    # Saved as written, apart from headers put back to their exact names.
+    from backend.generation import tidy_headers
+    assert build["generated_plan"] == tidy_headers(SAMPLE_PLAN)
     assert build["civ"] == "Korea"
     assert build["primary_focus"] == "Science"
     # Denormalized for archive filtering.
@@ -329,3 +331,37 @@ def test_a_cut_off_plan_is_saved_and_flagged(client, sample_config, monkeypatch)
 
 def test_a_finished_plan_is_not_flagged(client, sample_config, stub_llm):
     assert client.post("/api/generate", json={"config": sample_config}).json()["truncated"] is False
+
+
+def test_a_decorated_header_is_tidied_before_saving(client, sample_config, monkeypatch):
+    from backend import llm
+
+    async def decorated(system_prompt, user_prompt, max_tokens):
+        return llm.Completion(
+            text="## Civ & Leader\n**Korea**\n\n## Timing Benchmarks (Standard speed)\n- T25: 3 cities",
+            model="m",
+        )
+
+    monkeypatch.setattr(llm, "complete", decorated)
+    plan = client.post("/api/generate", json={"config": sample_config}).json()["generated_plan"]
+    assert "## Timing Benchmarks\n\nStandard speed.\n- T25: 3 cities" in plan
+
+
+def test_the_speed_line_says_how_much_to_scale_when_the_game_data_knows(client, sample_config, stub_llm, monkeypatch):
+    from backend import facts
+
+    monkeypatch.setattr(facts, "game_speeds", lambda: {"Marathon": 300, "Standard": 100})
+    client.post("/api/generate", json={"config": {**sample_config, "gameSpeed": "Marathon"}})
+    assert ("- Game speed: Marathon (everything costs 300% of Standard, so multiply every "
+            "Standard-speed turn count by 3, early milestones included: turn 30 → turn 90, "
+            "turn 100 → turn 300)") in stub_llm[-1]["user"]
+    client.post("/api/generate", json={"config": {**sample_config, "gameSpeed": "Standard"}})
+    assert "- Game speed: Standard\n" in stub_llm[-1]["user"]      # nothing to scale
+
+
+def test_the_speed_line_is_unchanged_without_game_data(client, sample_config, stub_llm, monkeypatch):
+    from backend import facts
+
+    monkeypatch.setattr(facts, "game_speeds", lambda: {})
+    client.post("/api/generate", json={"config": {**sample_config, "gameSpeed": "Marathon"}})
+    assert "- Game speed: Marathon\n" in stub_llm[-1]["user"]

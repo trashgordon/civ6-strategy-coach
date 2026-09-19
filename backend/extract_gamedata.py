@@ -500,6 +500,32 @@ def _trees(assets: Path) -> dict[str, dict]:
     return {label: _tree(ruleset.load(assets, label), names) for label in ruleset.RULESETS}
 
 
+def _game_speeds(assets: Path, names: dict[str, str]) -> dict[str, int]:
+    """{"Marathon": 300, ...}: each speed's cost multiplier, as a percentage of Standard.
+
+    The coach is told to scale its turn benchmarks to the speed but not by how much, and
+    it under-scaled Marathon to about 2-2.5x. The game says 3x; this is where it says so.
+    """
+    import xml.etree.ElementTree as ET
+
+    path = assets / "Base" / "Assets" / "Gameplay" / "Data" / "GameSpeeds.xml"
+    try:
+        root = ET.fromstring(path.read_text(errors="ignore"))
+    except (OSError, ET.ParseError):
+        return {}
+    speeds = {}
+    for row in root.iterfind("GameSpeeds/Row"):
+        values = {**row.attrib, **{c.tag: (c.text or "").strip() for c in row}}
+        name = _clean(names.get(values.get("Name", ""), ""))
+        try:
+            multiplier = int(values.get("CostMultiplier", ""))
+        except ValueError:
+            continue
+        if name:
+            speeds[name] = multiplier
+    return speeds
+
+
 def _clean(name: str) -> str | None:
     """Drop unresolved keys, icon markup, and anything that isn't a plain name."""
     if not name:
@@ -564,6 +590,7 @@ def extract() -> dict[str, list]:
     facts["governor_kits"] = _governor_kits(rows, strings, facts["effects"])
     # Per ruleset: the expansions rewrite the tree, so one merged tree would be wrong.
     facts["tree"] = _trees(assets)
+    facts["game_speeds"] = _game_speeds(assets, _display_names(assets))
     # A scan-only table; it exists to build governor_kits, not to be listed.
     facts.pop("_governor_promotion_sets", None)
 

@@ -86,6 +86,32 @@ def _style_line(label: str, value: str, fallback: str) -> str:
     return f"- {label}: {value}"
 
 
+def expected_headers() -> list[str]:
+    """The thirteen "##" headers the build prompt asks for, in order."""
+    import re
+
+    return re.findall(r"^## (.+)$", BUILD_SYSTEM_PROMPT, flags=re.MULTILINE)
+
+
+def _speed_note(multiplier: int | None) -> str:
+    """Say how much the speed stretches the game, when the game data says so.
+
+    Told only to "scale turn numbers to the speed", the coach scaled Marathon by 2-2.5x;
+    the game's own cost multiplier is 3x.
+    """
+    if not multiplier or multiplier == 100:
+        return ""
+    factor = multiplier / 100
+    shown = f"{factor:.1f}".rstrip("0").rstrip(".")
+    # A worked example, because the bare factor wasn't enough: the coach wrote "roughly
+    # 3x Standard turns" and then put its first milestone at turn 40, not 90.
+    examples = ", ".join(f"turn {t} → turn {round(t * factor)}" for t in (30, 100))
+    return (
+        f" (everything costs {multiplier}% of Standard, so multiply every Standard-speed "
+        f"turn count by {shown}, early milestones included: {examples})"
+    )
+
+
 def build_user_prompt(
     config: dict,
     civ: str,
@@ -93,6 +119,7 @@ def build_user_prompt(
     primary_focus: str,
     posture: str,
     playstyle_text: str,
+    speed_multiplier: int | None = None,
 ) -> str:
     """Ported from `buildUserPrompt` in the prototype, plus the three style dropdowns."""
     modes = config.get("modes") or {}
@@ -113,7 +140,7 @@ def build_user_prompt(
             "Game configuration:",
             f"- Ruleset: {field('ruleset')}",
             f"- Difficulty: {field('difficulty')}",
-            f"- Game speed: {field('gameSpeed')}",
+            f"- Game speed: {field('gameSpeed')}{_speed_note(speed_multiplier)}",
             f"- Map: {map_line}",
             f"- City-states: {field('cityStates')}",
             f"- Disaster intensity: {field('disasterIntensity')}",

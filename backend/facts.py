@@ -73,6 +73,16 @@ _ALLOWED = {
 
 
 @lru_cache(maxsize=1)
+def game_speeds() -> dict[str, int]:
+    """{"Marathon": 300, "Standard": 100, ...}, or {} when not extracted."""
+    try:
+        data = json.loads((facts_dir() / "game_speeds.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return {str(k): int(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+
+@lru_cache(maxsize=1)
 def effects() -> dict[str, str]:
     """{name: what it actually does}, from the game's own description text.
 
@@ -164,6 +174,7 @@ def reload() -> None:
     effects.cache_clear()
     dedication_bonuses.cache_clear()
     governor_kits.cache_clear()
+    game_speeds.cache_clear()
     tree.reload()
 
 

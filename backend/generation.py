@@ -5,6 +5,7 @@ prompt assembly, same grounding, same token cap — rather than a copy that can 
 """
 
 import os
+import re
 from typing import Any
 
 from . import facts, llm, prompts
@@ -35,6 +36,43 @@ def system_prompt(ruleset: str | None = None) -> str:
     return prompts.build_system_prompt(facts.prompt_block(ruleset=ruleset))
 
 
+_HEADER = re.compile(r"^##\s+(.+?)\s*$", flags=re.MULTILINE)
+_NUMBERING = re.compile(r"^(?:\d+[.)]\s*|#\d+\s*)")
+
+
+def tidy_headers(plan: str) -> str:
+    """Put decorated headers back to the exact thirteen the app renders by name.
+
+    "## Timing Benchmarks (Standard speed)" keeps happening despite the prompt forbidding
+    it (1 in 6 plans, at any reasoning effort), and the app keys section rendering on the
+    exact name — that plan lost its turn track. So strip the decoration and keep what it
+    said as the section's first line. Headers that aren't a known one plus decoration are
+    left alone.
+    """
+    expected = prompts.expected_headers()
+    lowered = {h.lower(): h for h in expected}
+
+    def fix(match: re.Match) -> str:
+        raw = match.group(1)
+        if raw in expected:
+            return match.group(0)
+        text = _NUMBERING.sub("", raw).strip()
+        if text.lower() in lowered:
+            return f"## {lowered[text.lower()]}"
+        for header in sorted(expected, key=len, reverse=True):
+            if not text.lower().startswith(header.lower()):
+                continue
+            extra = text[len(header):].strip()
+            if not extra or extra[0] not in "(:—–-[":
+                continue  # "Governors & Titles" is a different header, not decoration
+            extra = extra.strip(" ()[]:—–-").strip()
+            note = f"\n\n{extra[0].upper()}{extra[1:]}." if extra else ""
+            return f"## {header}{note.rstrip('.') + '.' if note else ''}"
+        return match.group(0)
+
+    return _HEADER.sub(fix, plan)
+
+
 async def draft_plan(
     *,
     config: dict[str, Any],
@@ -52,6 +90,7 @@ async def draft_plan(
         primary_focus=primary_focus,
         posture=posture,
         playstyle_text=playstyle_text,
+        speed_multiplier=facts.game_speeds().get(str(config.get("gameSpeed") or "")),
     )
     return await llm.complete(
         system_prompt(config.get("ruleset")), user_prompt, max_tokens=plan_token_cap()
