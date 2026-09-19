@@ -249,3 +249,43 @@ def test_holding_out_for_an_unlock_is_not_a_claim_about_it(installed_tree):
 def test_wonders_reach_the_prompt_with_effect_placement_and_unlock(installed_tree):
     block = facts.prompt_block(ruleset="Gathering Storm")
     assert "- Colosseum (Games and Recreation, 400 production): +2 Culture. Must be built on flat land." in block
+
+
+# --------------------------------------------------------------------------- wonders
+
+
+def wonders_plan(body):
+    return plan() + f"\n## Wonders\n{body}\n"
+
+
+def test_a_wonder_s_bracketed_unlock_must_be_the_real_one(installed_tree):
+    assert tree.path_issues(wonders_plan("- **Colosseum** (Construction): amenities"), "Gathering Storm") == [
+        "Colosseum is unlocked by Games and Recreation (civic), not Construction."
+    ]
+    assert tree.path_issues(wonders_plan("- **Colosseum** (Games and Recreation) first"), "Gathering Storm") == []
+
+
+def test_a_bracket_without_a_tech_or_civic_is_not_a_claim(installed_tree):
+    assert tree.path_issues(wonders_plan("- **Colosseum** (capital, flat land)"), "Gathering Storm") == []
+
+
+def test_for_claims_are_checked_in_the_wonders_section_too(installed_tree):
+    assert tree.path_issues(wonders_plan("- Beeline **Construction** for Colosseum"), "Gathering Storm") == [
+        "Colosseum is unlocked by Games and Recreation (civic), not Construction."
+    ]
+
+
+def test_order_and_tree_checks_stay_in_the_path_sections(installed_tree):
+    # A wonder section may mention techs and civics in any order it likes.
+    assert tree.path_issues(wonders_plan("- After **Currency → Writing**, start Colosseum"), "Gathering Storm") == []
+
+
+@pytest.mark.parametrize("body, verdict", [
+    ("- **Colosseum** (Games and Recreation) in the capital. Backup: more Arenas.", "pass"),
+    ("- **Colosseum** if it gets sniped, build Arenas instead", "pass"),
+    ("- **Colosseum** in the capital, start by T60", "fail"),          # no way out
+    ("Domination build: skip wonders, every hammer goes to units.", "pass"),
+    ("Nothing to say here.", "fail"),
+])
+def test_the_eval_wants_priorities_with_backups_or_a_clear_no(installed_tree, body, verdict):
+    assert scoring.score_plan(wonders_plan(body), "Gathering Storm")["checks"]["wonders_have_backups"] == verdict

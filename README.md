@@ -15,7 +15,7 @@ You run it yourself, with your own LLM API key. No hosted instance, no accounts.
 
 | New briefing | A plan in the Archive | Light theme |
 | --- | --- | --- |
-| ![The New briefing form](docs/screenshots/new-briefing.png) | ![A twelve-section plan as cards](docs/screenshots/archive.png) | ![The same plan in the light theme](docs/screenshots/light-theme.png) |
+| ![The New briefing form](docs/screenshots/new-briefing.png) | ![A plan as section cards](docs/screenshots/archive.png) | ![The same plan in the light theme](docs/screenshots/light-theme.png) |
 
 Dark and light themes both ship. It follows your system setting until you pick one from
 the **Auto / Light / Dark** switch in the top bar, and remembers the choice.
@@ -82,7 +82,7 @@ MODEL=ollama/llama3.1
 
 > **A caveat, plainly stated:** the system prompt was tuned against Claude's
 > instruction-following. Other providers should work — the call is provider-agnostic —
-> but they haven't been tightly verified, especially the twelve-section structure and the
+> but they haven't been tightly verified, especially the thirteen-section structure and the
 > word limit. `python -m evals.run` against another `MODEL` is the quickest way to check. Contributions testing against other models are very welcome.
 
 ## Configuration
@@ -191,8 +191,8 @@ models) spend output tokens on internal reasoning *before* writing any of the an
 Left unbounded, reasoning eats the entire token budget and you get an empty plan.
 
 `REASONING_EFFORT` defaults to `low`, which is right for this app — the coach's brief is
-deliberately short, not a proof. Measured on Claude Sonnet 5: a full twelve-section plan
-comes to about 2,900 output tokens. Raise it to `medium` or `high` if you want
+deliberately short, not a proof. Measured on Claude Sonnet 5: a full plan
+comes to about 2,900–3,200 output tokens. Raise it to `medium` or `high` if you want
 more deliberation and are happy to pay for it. Models that don't reason ignore it.
 
 If a plan ever comes back empty, the error names the cause and the knob to turn rather
@@ -258,7 +258,7 @@ side-by-side table plus a compare-and-contrast writeup from a second prompt).
 won, and `PATCH /api/builds/{id}` renames a build, edits its campaign journal, or records
 how the game went.
 
-A plan has twelve sections. Four of them exist because the first version of this
+A plan has thirteen sections. Five of them exist because the first version of this
 app didn't have them and the plans were worse for it:
 
 - **City-States & Envoys** — which specific city-states to chase and what their
@@ -270,9 +270,14 @@ app didn't have them and the plans were worse for it:
   a flat list left the coach hedging ("the promotion that boosts Great Person points"
   rather than naming Grants)
 - **What Goes Wrong** — the two or three ways this particular build loses, the early
-  warning sign for each, and the pivot That section
-leans on the extracted data: without it the coach can only say "send envoys for suzerain
-bonuses", which isn't advice.
+  warning sign for each, and the pivot
+- **Wonders** — two to four wonders to race for, where each goes, when to start it, a
+  backup for when an AI finishes it first, and one to skip. Each wonder's real effect and
+  placement rule is injected from the game data, so "Petra if you have desert" is the
+  game's rule rather than the coach's memory
+
+The City-States section leans on the extracted data: without it the coach can only say
+"send envoys for suzerain bonuses", which isn't advice.
 
 ### Outcome tracking
 
@@ -316,7 +321,7 @@ python -m evals.run --rescore     # re-apply changed scoring to the last run, fr
 
 It sends six fixed briefs (`evals/briefs.json`) through exactly the path the app uses —
 each chosen because it once produced a specific error — and scores every plan with
-deterministic checks: all twelve headers verbatim, within the word cap, 5–8 Playbook
+deterministic checks: all thirteen headers verbatim, within the word cap, 5–8 Playbook
 steps, turn numbers in the benchmarks, real city-states and governor promotions named,
 dedications covering Normal and Dark ages, no unverified names, and none of the
 **known-wrong claims** the coach has been caught making before (Corvée as a settler card,

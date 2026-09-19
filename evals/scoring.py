@@ -41,6 +41,17 @@ def expected_headers() -> list[str]:
     return re.findall(r"^## (.+)$", prompts.BUILD_SYSTEM_PROMPT, flags=re.M)
 
 
+_BACKUP = re.compile(
+    r"\b(?:backup|back-up|fallback|fall back|if (?:it'?s |you )?(?:lose|lost|beaten|sniped|taken)"
+    r"|(?:gets?|is) (?:sniped|taken|beaten)|if an? AI|if someone|instead)\b",
+    re.IGNORECASE,
+)
+_NO_WONDERS = re.compile(
+    r"\b(?:skip wonders|no wonders|don'?t chase|not worth (?:racing|chasing)|ignore wonders)\b",
+    re.IGNORECASE,
+)
+
+
 def word_cap() -> int:
     match = re.search(r"under roughly (\d+) words", prompts.BUILD_SYSTEM_PROMPT)
     return int(match.group(1)) if match else 1100
@@ -93,6 +104,20 @@ def score_plan(plan: str, ruleset: str | None = None) -> dict:
     checks["what_goes_wrong_2plus"] = (
         PASS if _bullets(section(plan, "What Goes Wrong")) >= 2 else FAIL
     )
+
+    # Wonders: either real priorities that each come with a way out when an AI beats
+    # you to one, or a plain "this build shouldn't chase them". Silence fails.
+    wonders_text = section(plan, "Wonders")
+    known_wonders = (
+        set(tree.for_ruleset(ruleset).get("wonders", {})) or set(facts._load().get("wonders", ()))
+    )
+    named_wonders = {w for w in known_wonders if re.search(rf"\b{re.escape(w)}\b", wonders_text)}
+    if not known_wonders:
+        checks["wonders_have_backups"] = SKIP
+    elif named_wonders:
+        checks["wonders_have_backups"] = PASS if _BACKUP.search(wonders_text) else FAIL
+    else:
+        checks["wonders_have_backups"] = PASS if _NO_WONDERS.search(wonders_text) else FAIL
 
     dedications = section(plan, "Dedications").lower()
     checks["dedications_cover_ages"] = (

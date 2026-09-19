@@ -11,6 +11,9 @@ Civic Path sections, all deliberately narrow so a warning means something:
 3. A path credits an unlock to the wrong tech or civic: "Civil Service for Classical
    Republic" — Classical Republic comes from Political Philosophy.
 
+The Wonders section gets the third check too, plus its bracket form — "**Petra**
+(Astronomy)", when Petra comes from Mathematics.
+
 Like the rest of the grounding, all of this is a silent no-op without `data/facts/`.
 """
 
@@ -182,11 +185,11 @@ def _found(pattern: re.Pattern | None, lookup: dict, text: str) -> list[tuple[in
 
 
 def _sections(plan: str) -> dict[str, str]:
-    """{"tech path": body, "civic path": body} for whichever the plan has."""
+    """{"tech path": …, "civic path": …, "wonders": …} for whichever the plan has."""
     out = {}
     for match in re.finditer(r"^##\s+(.+?)\s*$", plan, flags=re.MULTILINE):
         heading = match.group(1).strip().lower()
-        if heading in _SECTION_TREE:
+        if heading in _SECTION_TREE or heading == "wonders":
             rest = plan[match.end():]
             end = re.search(r"^##\s+", rest, flags=re.MULTILINE)
             out[heading] = rest[: end.start()] if end else rest
@@ -271,7 +274,14 @@ def path_issues(plan: str, ruleset: str | None) -> list[str]:
         if message not in issues:
             issues.append(message)
 
-    for heading, body in _sections(_plain(plan)).items():
+    sections = _sections(_plain(plan))
+    for line in sections.pop("wonders", "").splitlines():
+        for message in _wonder_unlock_claims(line, index):
+            report(message)
+        for message in _unlock_claims(line, index):
+            report(message)
+
+    for heading, body in sections.items():
         bucket = _SECTION_TREE[heading]
         other = "civics" if bucket == "technologies" else "technologies"
         for line in body.splitlines():
@@ -290,45 +300,74 @@ def path_issues(plan: str, ruleset: str | None) -> list[str]:
                                 if b == b2 and then in index["ancestors"].get((name, b), ()):
                                     report(f"{name} comes before {then}, but {name} needs {then} first.")
 
-            for clause in _CLAUSE.split(line):
-                for connective in _CONNECTIVE.finditer(clause):
-                    before = clause[: connective.start()]
-                    # The claim belongs to the chain step it's written in: in
-                    # "… → Urbanization → into Modern civics for X", nothing in the
-                    # step "into Modern civics" is said to unlock X.
-                    step = _ARROW.split(before)[-1]
-                    if not _found(index["tree_pattern"], index["tree_names"], step):
-                        continue
-                    # "hold for Merchant Republic" is waiting for it, not unlocking it.
-                    if _WAITING.search(before):
-                        continue
-                    sources = {
-                        entry[0]
-                        for *_, entry in _found(
-                            index["tree_pattern"], index["tree_names"], clause[: connective.start()]
-                        )
-                    }
-                    if not sources:
-                        continue
-                    span = clause[connective.end():]
-                    stop = _SPAN_END.search(span)
-                    span = span[: stop.start()] if stop else span
-                    span = " ".join(span.split()[:_SPAN_WORDS])
-                    for item in _claimed_unlocks(span, index):
-                        bucket_of_unlock = "technologies" if item["tree"] == "technology" else "civics"
-                        # "Economics for Commercial Hub snowball" isn't a claim that
-                        # Economics unlocks it: Currency comes first, and hubs keep
-                        # paying off. A government or card is a one-off unlock, though,
-                        # so "Civil Service for Classical Republic" is still wrong.
-                        already_have = item["kind"] in _KEEPS_PAYING and any(
-                            item["by"] in index["ancestors"].get((source, bucket_of_unlock), ())
-                            for source in sources
-                        )
-                        if item["by"] not in sources and not already_have:
-                            credited = " or ".join(sorted(sources))
-                            report(
-                                f"{item['name']} is unlocked by {item['by']} "
-                                f"({'tech' if item['tree'] == 'technology' else 'civic'}), "
-                                f"not {credited}."
-                            )
+            for message in _unlock_claims(line, index):
+                report(message)
     return issues
+
+
+def _unlock_claims(line: str, index: dict) -> list[str]:
+    """ "X for Y" / "X unlocks Y" claims in one line where Y comes from something else."""
+    messages: list[str] = []
+    for clause in _CLAUSE.split(line):
+        for connective in _CONNECTIVE.finditer(clause):
+            before = clause[: connective.start()]
+            # The claim belongs to the chain step it's written in: in
+            # "… → Urbanization → into Modern civics for X", nothing in the
+            # step "into Modern civics" is said to unlock X.
+            step = _ARROW.split(before)[-1]
+            if not _found(index["tree_pattern"], index["tree_names"], step):
+                continue
+            # "hold for Merchant Republic" is waiting for it, not unlocking it.
+            if _WAITING.search(before):
+                continue
+            sources = {
+                entry[0]
+                for *_, entry in _found(
+                    index["tree_pattern"], index["tree_names"], clause[: connective.start()]
+                )
+            }
+            if not sources:
+                continue
+            span = clause[connective.end():]
+            stop = _SPAN_END.search(span)
+            span = span[: stop.start()] if stop else span
+            span = " ".join(span.split()[:_SPAN_WORDS])
+            for item in _claimed_unlocks(span, index):
+                bucket_of_unlock = "technologies" if item["tree"] == "technology" else "civics"
+                # "Economics for Commercial Hub snowball" isn't a claim that
+                # Economics unlocks it: Currency comes first, and hubs keep
+                # paying off. A government or card is a one-off unlock, though,
+                # so "Civil Service for Classical Republic" is still wrong.
+                already_have = item["kind"] in _KEEPS_PAYING and any(
+                    item["by"] in index["ancestors"].get((source, bucket_of_unlock), ())
+                    for source in sources
+                )
+                if item["by"] not in sources and not already_have:
+                    credited = " or ".join(sorted(sources))
+                    messages.append(
+                        f"{item['name']} is unlocked by {item['by']} "
+                        f"({'tech' if item['tree'] == 'technology' else 'civic'}), "
+                        f"not {credited}."
+                    )
+    return messages
+
+
+_PARENS = re.compile(r"\s*\(([^)]*)\)")
+
+
+def _wonder_unlock_claims(line: str, index: dict) -> list[str]:
+    """ "**Petra** (Astronomy)": the tech or civic in brackets must be what unlocks it."""
+    messages = []
+    for start, end, item in _found(index["unlock_pattern"], index["unlock_names"], line):
+        if item.get("kind") != "wonder":
+            continue
+        bracket = _PARENS.match(line, end)
+        if not bracket:
+            continue
+        named = {entry[0] for *_, entry in _found(index["tree_pattern"], index["tree_names"], bracket.group(1))}
+        if named and item["by"] not in named:
+            messages.append(
+                f"{item['name']} is unlocked by {item['by']} "
+                f"({'tech' if item['tree'] == 'technology' else 'civic'}), not {' or '.join(sorted(named))}."
+            )
+    return messages

@@ -187,9 +187,11 @@ function renderBlocks(text, prefix = "b") {
 
 // ------------------------------------------------------------------ sections
 
-// Chips only where the link is true: techs drive science, civics culture, religion faith.
+// Chips only where the link is true: techs drive science, civics culture, religion faith,
+// and wonders are paid for in production.
 const SECTION_YIELDS = {
   "Tech Path": { yieldKey: "science", label: "Science" },
+  "Wonders": { yieldKey: "production", label: "Production" },
   "Civic Path": { yieldKey: "culture", label: "Culture" },
   "Religious Beliefs": { yieldKey: "faith", label: "Faith" },
 };

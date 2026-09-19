@@ -218,7 +218,7 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
         {!loading && !error && !build && (
           <Panel>
             <Empty>
-              Set your build on the left and draft a strategy. The plan lands here — twelve
+              Set your build on the left and draft a strategy. The plan lands here — thirteen
               sections, with a Playbook you can tick off mid-game.
             </Empty>
           </Panel>

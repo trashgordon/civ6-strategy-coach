@@ -32,9 +32,10 @@ def without_facts(tmp_path, monkeypatch):
 
 def test_expectations_are_read_from_the_live_prompt():
     """Editing the prompt must not leave the eval checking stale rules."""
-    assert len(HEADERS) == 12
+    assert len(HEADERS) == 13
+    assert HEADERS[4] == "Wonders"
     assert HEADERS[0] == "Civ & Leader" and HEADERS[-1] == "The Playbook"
-    assert scoring.word_cap() == 1100
+    assert scoring.word_cap() == 1200
 
 
 def test_a_well_formed_plan_passes_everything_it_can_judge():
