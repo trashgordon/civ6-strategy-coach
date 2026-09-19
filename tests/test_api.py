@@ -311,3 +311,21 @@ def test_builds_carry_the_tree_check(client, sample_config, stub_llm):
     assert isinstance(build["tree_issues"], list)
     fetched = client.get(f"/api/builds/{build['id']}").json()
     assert fetched["tree_issues"] == build["tree_issues"]
+
+
+def test_a_cut_off_plan_is_saved_and_flagged(client, sample_config, monkeypatch):
+    from backend import llm
+
+    async def cut_off(system_prompt, user_prompt, max_tokens):
+        return llm.Completion(text="## Civ & Leader\n**Korea**\n\n## Tech Path\n- Wri",
+                              model="m", truncated=True)
+
+    monkeypatch.setattr(llm, "complete", cut_off)
+    build = client.post("/api/generate", json={"config": sample_config}).json()
+    assert build["truncated"] is True
+    # ...and it stays flagged in the archive.
+    assert client.get(f"/api/builds/{build['id']}").json()["truncated"] is True
+
+
+def test_a_finished_plan_is_not_flagged(client, sample_config, stub_llm):
+    assert client.post("/api/generate", json={"config": sample_config}).json()["truncated"] is False

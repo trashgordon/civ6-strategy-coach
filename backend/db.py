@@ -77,6 +77,11 @@ SCHEMA_V6 = """
 ALTER TABLE saved_builds ADD COLUMN recommended_civ TEXT NOT NULL DEFAULT '';
 """
 
+# Set when the model hit its output limit and the plan is missing its last sections.
+SCHEMA_V7 = """
+ALTER TABLE saved_builds ADD COLUMN truncated INTEGER NOT NULL DEFAULT 0;
+"""
+
 # The civ a build was actually played as: the player's pick when they made one,
 # otherwise the coach's. Used wherever a build is grouped, filtered or shown by civ.
 PLAYED_CIV = "COALESCE(NULLIF(civ, ''), NULLIF(recommended_civ, ''), '')"
@@ -89,6 +94,7 @@ MIGRATIONS: list[tuple[int, str]] = [
     (4, SCHEMA_V4),
     (5, SCHEMA_V5),
     (6, SCHEMA_V6),
+    (7, SCHEMA_V7),
 ]
 
 OUTCOMES = ("won", "lost", "abandoned")
@@ -183,6 +189,7 @@ def _row_to_build(row: sqlite3.Row, include_plan: bool = True) -> dict[str, Any]
         "outcome": row["outcome"] if "outcome" in row.keys() else "",
         "victory_type": row["victory_type"] if "victory_type" in row.keys() else "",
         "end_turn": row["end_turn"] if "end_turn" in row.keys() else None,
+        "truncated": bool(row["truncated"]) if "truncated" in row.keys() else False,
     }
     if include_plan:
         build["generated_plan"] = row["generated_plan"]
@@ -201,6 +208,7 @@ def insert_build(
     playstyle_text: str,
     generated_plan: str,
     recommended_civ: str | None = None,
+    truncated: bool = False,
 ) -> dict[str, Any]:
     if recommended_civ is None:
         recommended_civ = recommended_civ_from_plan(generated_plan or "")
@@ -212,8 +220,8 @@ def insert_build(
             INSERT INTO saved_builds (
                 created_at, title, ruleset, difficulty, map_type, config_json,
                 civ, city_philosophy, primary_focus, posture, playstyle_text, generated_plan,
-                recommended_civ
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                recommended_civ, truncated
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 created_at,
@@ -229,6 +237,7 @@ def insert_build(
                 playstyle_text or "",
                 generated_plan or "",
                 recommended_civ or "",
+                int(bool(truncated)),
             ),
         )
     return get_build(cursor.lastrowid)  # type: ignore[arg-type]

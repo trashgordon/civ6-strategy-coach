@@ -21,9 +21,12 @@ class LLMError(RuntimeError):
 # Reasoning models (Claude Sonnet 5, Opus 5, o-series, Gemini thinking) burn output
 # tokens on internal reasoning before writing a word of the answer. Left unbounded, a
 # reasoning model spends the entire max_tokens budget thinking and returns empty text.
-# LiteLLM's `reasoning_effort` is the provider-agnostic dial for that, so we keep it low:
-# the coach's output is a deliberately short brief, not a proof.
-REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low").strip().lower() or "low"
+# LiteLLM's `reasoning_effort` is the provider-agnostic dial for that. "medium" is the
+# default because "low" wrote the plan before it had decided: on the eval briefs that
+# show it, 10 of 24 plans at "low" opened with one civ and switched to another mid-section
+# ("Korea is the clean pick... instead, take Germany"), against 0 of 12 at "medium". It
+# costs ~2.4x per plan and ~95 s instead of ~40 s; generation.py sizes max_tokens for it.
+REASONING_EFFORT = os.getenv("REASONING_EFFORT", "medium").strip().lower() or "medium"
 
 
 # Caching only pays for a prefix big enough to clear the provider's minimum (1024-4096
@@ -50,6 +53,10 @@ class Completion:
     # answer meaning "cacheable request, but nothing was written or read this time".
     cache_write_tokens: int | None = None
     cache_read_tokens: int | None = None
+    # The model stopped because it hit max_tokens, not because it was done: the text is
+    # a plan with its last sections missing. On a reasoning model the usual cause is
+    # thinking eating the budget.
+    truncated: bool = False
 
 
 # Provider prefix -> the env var LiteLLM expects for it. Only used to give a useful
@@ -129,6 +136,7 @@ async def complete(system_prompt: str, user_prompt: str, max_tokens: int) -> Com
         cost_usd=_extract_cost(response, model_name),
         cache_write_tokens=cache_write,
         cache_read_tokens=cache_read,
+        truncated=_finish_reason(response) == "length",
     )
 
 

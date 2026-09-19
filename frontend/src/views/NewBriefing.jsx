@@ -9,7 +9,7 @@ import { Markdown } from "../markdown";
 import { DISPLAY, T } from "../theme";
 import {
   Button, Empty, ErrorNote, FieldLabel, NumberInput, Panel, Segmented, Select, Thinking,
-  ToggleChip, TreeIssues, UnverifiedNames, UsageNote,
+  ToggleChip, TreeIssues, TruncatedNote, UnverifiedNames, UsageNote,
 } from "../components/ui";
 
 // Short labels for the segmented controls. The values stay the full strings the
@@ -210,7 +210,12 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem", minWidth: 0 }}>
         {loading && (
-          <Panel><Thinking label="The coach is studying the board" /></Panel>
+          <Panel>
+            <Thinking
+              label="The coach is studying the board"
+              hint="It thinks the plan through before writing, so this usually takes a minute or two."
+            />
+          </Panel>
         )}
 
         {!loading && error && <ErrorNote message={error} onRetry={generate} />}
@@ -246,6 +251,7 @@ export default function NewBriefing({ onSaved, onOpenArchive }) {
                 <Button variant="ghost" onClick={() => setBuild(null)}>New briefing</Button>
               </div>
             </header>
+            <TruncatedNote truncated={build.truncated} />
             <UnverifiedNames names={build.unverified_names} />
             <TreeIssues issues={build.tree_issues} />
             <Markdown text={build.generated_plan} layout="sections" buildId={build.id} />

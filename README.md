@@ -93,7 +93,8 @@ All of it optional except the model and its key.
 | --- | --- | --- |
 | `MODEL` | `anthropic/claude-sonnet-5` | LiteLLM model string |
 | *provider key* | — | e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` |
-| `REASONING_EFFORT` | `low` | Reasoning depth on models that reason (see below) |
+| `REASONING_EFFORT` | `medium` | Reasoning depth on models that reason (see below) |
+| `PLAN_MAX_TOKENS` | by effort | Output cap for a plan: 6,000 at `low`, 12,000 at `medium`/`high` |
 | `PROMPT_CACHE` | `1` | Cache the game-facts prompt prefix (see below) |
 | `CIV6_PATH` | auto-detected | Your Civ VI install, for game-data grounding |
 | `FACTS_PATH` | `./data/facts` | Where extracted game names are cached |
@@ -190,10 +191,22 @@ Current reasoning models (Claude Sonnet 5 and Opus 5, OpenAI o-series, Gemini th
 models) spend output tokens on internal reasoning *before* writing any of the answer.
 Left unbounded, reasoning eats the entire token budget and you get an empty plan.
 
-`REASONING_EFFORT` defaults to `low`, which is right for this app — the coach's brief is
-deliberately short, not a proof. Measured on Claude Sonnet 5: a full plan
-comes to about 2,900–3,200 output tokens. Raise it to `medium` or `high` if you want
-more deliberation and are happy to pay for it. Models that don't reason ignore it.
+`REASONING_EFFORT` defaults to `medium`. At `low` the coach started writing before it had
+decided: on the eval briefs that show it, 10 of 24 plans opened with one civ and switched to
+another mid-section ("**Korea** is the clean pick… instead, take **Germany**"). At `medium`,
+0 of 12 did. Measured on Claude Sonnet 5:
+
+| | `low` | `medium` |
+| --- | --- | --- |
+| Output tokens per plan | ~2,800 | ~5,400–9,700 |
+| Time per plan | ~40 s | ~1–2 min |
+| Cost per plan (warm cache) | ~$0.035 | ~$0.085 |
+
+The output cap scales with the effort (thinking is billed against it): 6,000 tokens at
+`low`, 12,000 at `medium` — at 6,000, five of six `medium` plans were cut off mid-section.
+A plan that does hit the cap is saved with a ✂ warning rather than silently. Set
+`REASONING_EFFORT=low` to trade that quality for speed and cost. Models that don't reason
+ignore it.
 
 If a plan ever comes back empty, the error names the cause and the knob to turn rather
 than just shrugging.

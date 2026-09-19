@@ -289,3 +289,10 @@ def test_order_and_tree_checks_stay_in_the_path_sections(installed_tree):
 ])
 def test_the_eval_wants_priorities_with_backups_or_a_clear_no(installed_tree, body, verdict):
     assert scoring.score_plan(wonders_plan(body), "Gathering Storm")["checks"]["wonders_have_backups"] == verdict
+
+
+def test_a_claim_about_a_whole_path_names_the_missing_unlock_not_every_step(installed_tree):
+    assert issues("- **Pottery → Writing → Currency**, then onward for Colosseum") == []  # "onward" step
+    assert issues("- **Pottery → Writing → Currency → Economics** for Colosseum") == [
+        "Colosseum is unlocked by Games and Recreation (civic), which isn't in this path."
+    ]

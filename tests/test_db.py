@@ -27,7 +27,7 @@ def test_migrate_creates_the_schema_and_stamps_the_version():
         "id", "created_at", "title", "ruleset", "difficulty", "map_type",
         "config_json", "civ", "city_philosophy", "primary_focus", "posture",
         "playstyle_text", "generated_plan", "notes",
-        "outcome", "victory_type", "end_turn", "recommended_civ",
+        "outcome", "victory_type", "end_turn", "recommended_civ", "truncated",
     }
 
 

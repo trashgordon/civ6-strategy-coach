@@ -51,9 +51,9 @@ def test_a_genuinely_empty_response_still_says_try_again():
     assert "empty-handed" in llm._empty_response_reason(response, max_tokens=4000)
 
 
-def test_reasoning_effort_defaults_to_low():
-    """Left unbounded, a reasoning model spends the whole budget thinking."""
-    assert llm.REASONING_EFFORT == "low"
+def test_reasoning_effort_defaults_to_medium():
+    """At "low" the coach decided while writing and switched civs mid-plan."""
+    assert llm.REASONING_EFFORT == "medium"
 
 
 @pytest.mark.parametrize(
@@ -154,3 +154,41 @@ def test_cache_usage_falls_back_to_the_openai_shape():
 
 def test_missing_cache_reporting_is_not_an_error():
     assert llm._extract_cache_usage(FakeResponse("plan", usage=None)) == (None, None)
+
+
+def test_a_plan_cut_off_at_the_token_limit_is_marked_truncated(monkeypatch):
+    import asyncio
+    import litellm
+    from backend import llm
+
+    async def fake(**kwargs):
+        return FakeResponse("## Civ & Leader\n**Korea**\n\n## Tech Path\n- Writing → Cur", finish_reason="length")
+
+    monkeypatch.setattr(litellm, "acompletion", fake)
+    result = asyncio.run(llm.complete("system", "user", max_tokens=10))
+    assert result.truncated is True
+    assert result.text.startswith("## Civ & Leader")     # still returned, not discarded
+
+
+def test_a_finished_plan_is_not_truncated(monkeypatch):
+    import asyncio
+    import litellm
+    from backend import llm
+
+    async def fake(**kwargs):
+        return FakeResponse("## Civ & Leader\n**Korea**", finish_reason="stop")
+
+    monkeypatch.setattr(litellm, "acompletion", fake)
+    assert asyncio.run(llm.complete("system", "user", max_tokens=10)).truncated is False
+
+
+def test_the_plan_budget_grows_with_reasoning_effort(monkeypatch):
+    from backend import generation, llm
+
+    monkeypatch.delenv("PLAN_MAX_TOKENS", raising=False)
+    monkeypatch.setattr(llm, "REASONING_EFFORT", "low")
+    assert generation.plan_token_cap() == 6000
+    monkeypatch.setattr(llm, "REASONING_EFFORT", "medium")
+    assert generation.plan_token_cap() == 12000
+    monkeypatch.setenv("PLAN_MAX_TOKENS", "9000")
+    assert generation.plan_token_cap() == 9000

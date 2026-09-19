@@ -15,7 +15,6 @@ log = logging.getLogger("civ6")
 
 # The compare writeup is capped at ~400 words; see generation.py for why the caps sit
 # well above the prose length on a reasoning model.
-MAX_PLAN_TOKENS = generation.MAX_PLAN_TOKENS
 MAX_COMPARE_TOKENS = 2500
 
 
@@ -213,6 +212,7 @@ async def generate(payload: GenerateRequest) -> dict[str, Any]:
         posture=payload.posture,
         playstyle_text=payload.playstyle_text,
         generated_plan=result.text,
+        truncated=result.truncated,
     )
 
     db.insert_api_call(

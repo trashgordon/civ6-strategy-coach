@@ -343,11 +343,15 @@ def _unlock_claims(line: str, index: dict) -> list[str]:
                     for source in sources
                 )
                 if item["by"] not in sources and not already_have:
-                    credited = " or ".join(sorted(sources))
+                    # Two names read as a claim; a dozen is a whole path, and listing
+                    # them all ("not Apprenticeship or Astrology or …") buries the point.
+                    credited = (
+                        f"not {' or '.join(sorted(sources))}" if len(sources) <= 2
+                        else "which isn't in this path"
+                    )
                     messages.append(
                         f"{item['name']} is unlocked by {item['by']} "
-                        f"({'tech' if item['tree'] == 'technology' else 'civic'}), "
-                        f"not {credited}."
+                        f"({'tech' if item['tree'] == 'technology' else 'civic'}), {credited}."
                     )
     return messages
 

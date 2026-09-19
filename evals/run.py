@@ -29,7 +29,8 @@ RESULTS = config.REPO_ROOT / "data" / "evals"
 
 # Rough, from measured runs on Claude Sonnet 5 with the full grounding block. Only used
 # for the up-front estimate; the real cost is read back from each response.
-EST_COLD, EST_WARM = 0.13, 0.035
+# At REASONING_EFFORT=medium; roughly 0.13 / 0.035 at low.
+EST_COLD, EST_WARM = 0.16, 0.085
 
 
 def load_briefs() -> tuple[dict, list[dict]]:
@@ -86,6 +87,7 @@ async def run_one(base: dict, brief: dict, attempt: int) -> dict:
             "cache_read_tokens": result.cache_read_tokens,
             "plan": result.text,
             "ruleset": cfg.get("ruleset"),
+            "truncated": result.truncated,
             "score": scoring.score_plan(result.text, cfg.get("ruleset")),
         }
     )
@@ -160,6 +162,7 @@ def summarise(results: list[dict]) -> dict:
         "mean_words": round(sum(r["score"]["words"] for r in scored) / len(scored)) if scored else None,
         "unverified_total": sum(len(r["score"]["unverified"]) for r in scored),
         "tree_issues_total": sum(len(r["score"].get("tree_issues", [])) for r in scored),
+        "truncated": sum(1 for r in scored if r.get("truncated")),
         "known_wrong_tripped": tripped,
         "cost_usd": round(sum(r.get("cost_usd") or 0 for r in results), 4),
     }
@@ -190,6 +193,8 @@ def print_report(summary: dict, fp: dict, before: dict | None) -> None:
     print(f"\n  overall            {pct(summary['overall_pass_rate'])}"
           f"{delta(summary['overall_pass_rate'], old.get('overall_pass_rate'))}")
     print(f"  plans / errors     {summary['plans']} / {summary['errors']}")
+    if summary.get("truncated"):
+        print(f"  CUT OFF            {summary['truncated']} plan(s) hit the output limit")
     print(f"  mean words         {summary['mean_words']}"
           + (f"  (was {old['mean_words']})" if old.get("mean_words") else ""))
     print(f"  unverified names   {summary['unverified_total']}"

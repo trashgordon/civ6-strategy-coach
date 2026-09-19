@@ -214,7 +214,7 @@ export function Button({ children, onClick, disabled, variant = "primary", style
   );
 }
 
-export function Thinking({ label }) {
+export function Thinking({ label, hint }) {
   return (
     <div style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
       <p style={{ color: T.text, fontSize: "1rem", margin: 0 }}>
@@ -223,6 +223,7 @@ export function Thinking({ label }) {
         <span className="dot">.</span>
         <span className="dot">.</span>
       </p>
+      {hint && <p style={{ color: T.muted, fontSize: "0.85rem", margin: "0.5rem 0 0" }}>{hint}</p>}
     </div>
   );
 }
@@ -362,6 +363,31 @@ export function UnverifiedNames({ names }) {
       {names.join(", ")}
       <div style={{ color: T.muted, marginTop: "0.2rem" }}>
         The coach may have misremembered the name. Check before hunting for it in-game.
+      </div>
+    </div>
+  );
+}
+
+export function TruncatedNote({ truncated }) {
+  if (!truncated) return null;
+  return (
+    <div
+      role="alert"
+      style={{
+        border: `1px solid color-mix(in srgb, ${T.danger} 55%, transparent)`,
+        background: `color-mix(in srgb, ${T.danger} 10%, transparent)`,
+        borderRadius: "6px",
+        padding: "0.6rem 0.85rem",
+        margin: "0 0 1rem",
+        fontSize: "0.85rem",
+        lineHeight: 1.55,
+        color: T.text,
+      }}
+    >
+      <strong style={{ color: T.danger, fontWeight: 600 }}>✂ This plan was cut off.</strong>{" "}
+      The model hit its output limit before finishing, so the last sections are missing.
+      <div style={{ color: T.muted, marginTop: "0.2rem" }}>
+        Draft it again. If it keeps happening, lower REASONING_EFFORT or raise PLAN_MAX_TOKENS.
       </div>
     </div>
   );
